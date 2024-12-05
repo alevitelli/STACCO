@@ -37,11 +37,8 @@ const formatDate = (date: string | null) => {
   return date
 }
 
-export default function MoviePage({ 
-  params 
-}: { 
-  params: Promise<{ id: string }> | { id: string }
-}) {
+const MoviePage = ({ params }: { params: { id: string } }) => {
+  const { id } = params;
   const router = useRouter()
   const searchParams = useSearchParams()
   const [movie, setMovie] = useState<Movie | null>(null)
@@ -271,3 +268,5 @@ export default function MoviePage({
     </div>
   )
 }
+
+export default MoviePage;
