@@ -37,8 +37,11 @@ const formatDate = (date: string | null) => {
   return date
 }
 
-const MoviePage = ({ params }: { params: { id: string } }) => {
-  const { id } = params;
+export default function MoviePage({ 
+  params 
+}: { 
+  params: Promise<{ id: string }> | { id: string }
+}) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [movie, setMovie] = useState<Movie | null>(null)
@@ -78,7 +81,7 @@ const MoviePage = ({ params }: { params: { id: string } }) => {
     setLoading(true)
     setError(null)
     
-    fetch(`http://localhost:8000/api/movies/${movieId}`)
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/movies/${movieId}`)
       .then(res => {
         if (!res.ok) {
           if (res.status === 404) {
@@ -268,5 +271,3 @@ const MoviePage = ({ params }: { params: { id: string } }) => {
     </div>
   )
 }
-
-export default MoviePage;

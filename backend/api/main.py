@@ -4,13 +4,15 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 from datetime import datetime
 from ..database.db_manager import DatabaseManager
-from .models import Movie, Showtime
+from .models import Movie, Showtime, Cinema
 from typing import List, Optional
 import jwt
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 import smtplib
 from pathlib import Path
+import os
+from jwt.exceptions import PyJWTError
 
 app = FastAPI()
 db = DatabaseManager()
@@ -31,13 +33,19 @@ app.add_middleware(
 UPLOAD_DIR = Path("uploads/profile_pictures")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_HOST_USER = "alessandro.stacco.test@gmail.com"
+EMAIL_HOST_PASSWORD = "hobk ijne oiqu cipp"  # You'll need to generate this
+
 class UserRegister(BaseModel):
     email: str
     password: str
     nome: str
     cognome: str
-    indirizzo: str
-    dataNascita: str
+    citta: str
+    cap: str
+    data_nascita: str
     telefono: str
 
 class UserLogin(BaseModel):
@@ -49,7 +57,8 @@ class UserResponse(BaseModel):
     email: str
     nome: str
     cognome: str
-    indirizzo: str
+    citta: str
+    cap: str
     data_nascita: str
     telefono: str
 
@@ -101,6 +110,24 @@ async def get_cinemas():
     
     return cinemas
 
+@app.get("/api/cinemas/{cinema_id}", response_model=Cinema)
+async def get_cinema(cinema_id: str):
+    try:
+        # Get the cinema details
+        cinema = await db.get_cinema(cinema_id)
+        if not cinema:
+            raise HTTPException(status_code=404, detail="Cinema not found")
+
+        # Get current movies for this cinema
+        movies = await db.get_movies_by_cinema(cinema_id)
+        
+        # Add the movies to the cinema object
+        cinema['currentMovies'] = movies
+
+        return cinema
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/users/register")
 async def register_user(user_data: UserRegister):
     try:
@@ -116,10 +143,31 @@ async def register_user(user_data: UserRegister):
         user_dict = user_data.dict()
         user_dict["password"] = hashed_password
         
-        await db.create_user(user_dict)
-        return {"message": "User registered successfully"}
+        # Create the user and get the created user data
+        created_user = await db.create_user(user_dict)
         
+        if not created_user:
+            raise HTTPException(status_code=500, detail="Failed to create user")
+            
+        # Return the created user data
+        return {
+            "message": "User registered successfully",
+            "user": {
+                "id": created_user["id"],
+                "email": created_user["email"],
+                "nome": created_user["nome"],
+                "cognome": created_user["cognome"],
+                "citta": created_user["citta"],
+                "cap": created_user["cap"],
+                "data_nascita": created_user["data_nascita"],
+                "telefono": created_user["telefono"]
+            }
+        }
+        
+    except HTTPException as he:
+        raise he
     except Exception as e:
+        print(f"Registration error: {str(e)}")  # Add logging
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/users/login")
@@ -364,10 +412,14 @@ async def resend_verification_email(user_id: int):
 @app.post("/api/users/reset-password")
 async def request_password_reset(email_data: dict):
     try:
+        print(f"Password reset requested for email: {email_data['email']}")  # Debug log
         user = await db.get_user_by_email(email_data['email'])
+        
         if not user:
-            # Return success even if email doesn't exist (security best practice)
-            return {"message": "If the email exists, a password reset link has been sent"}
+            print("User not found")  # Debug log
+            return {"message": "Se l'email esiste, riceverai il link per reimpostare la password"}
+        
+        print(f"User found: {user['id']}")  # Debug log
         
         # Generate reset token
         token = jwt.encode(
@@ -375,56 +427,99 @@ async def request_password_reset(email_data: dict):
                 'user_id': user['id'],
                 'exp': datetime.utcnow() + timedelta(hours=1)
             },
-            'your-secret-key',  # Move to environment variables
+            'your-secret-key',  # Move this to environment variables
             algorithm='HS256'
         )
         
+        print(f"Reset token generated: {token}")  # Debug log
+        
         # Create reset link
         reset_link = f"http://localhost:3000/reset-password?token={token}"
+        print(f"Reset link: {reset_link}")  # Debug log
         
-        # Email content
-        msg = MIMEText(f'''
-            <h1>Reset Password</h1>
-            <p>Click the following link to reset your password:</p>
-            <a href="{reset_link}">Reset Password</a>
-            <p>This link will expire in 1 hour.</p>
-        ''', 'html')
-        
-        msg['Subject'] = 'Reset Password Request'
-        msg['From'] = 'your-email@example.com'  # Update with your email
-        msg['To'] = user['email']
-        
-        # Send email
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login('your-email@example.com', 'your-password')  # Use environment variables
-            server.send_message(msg)
-        
-        return {"message": "If the email exists, a password reset link has been sent"}
+        try:
+            # Email content
+            msg = MIMEText(f'''
+                <html>
+                    <body>
+                        <h1>Reimposta la tua password</h1>
+                        <p>Hai richiesto di reimpostare la password del tuo account.</p>
+                        <p>Clicca sul link seguente per procedere:</p>
+                        <a href="{reset_link}">Reimposta Password</a>
+                        <p>Il link scadrà tra 1 ora.</p>
+                        <p>Se non hai richiesto tu il reset della password, ignora questa email.</p>
+                    </body>
+                </html>
+            ''', 'html', 'utf-8')
+            
+            msg['Subject'] = 'Reimposta la tua password'
+            msg['From'] = EMAIL_HOST_USER
+            msg['To'] = user['email']
+            
+            print("Attempting to send email...")  # Debug log
+            
+            # Send email
+            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+                server.starttls()
+                print("Connected to SMTP server")  # Debug log
+                server.login(EMAIL_HOST_USER, EMAIL_HOST_PASSWORD)
+                print("Logged in to SMTP server")  # Debug log
+                server.send_message(msg)
+                print("Email sent successfully")  # Debug log
+            
+            return {"message": "Se l'email esiste, riceverai il link per reimpostare la password"}
+            
+        except Exception as e:
+            print(f"Email sending error: {str(e)}")  # Debug log
+            raise
+            
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Password reset error: {str(e)}")  # Debug log
+        raise HTTPException(
+            status_code=500,
+            detail="Si è verificato un errore durante l'invio dell'email"
+        )
 
 # Reset Password with Token
 @app.post("/api/users/reset-password/{token}")
-async def reset_password(token: str, new_password: dict):
+async def reset_password(token: str, password_data: dict):
     try:
-        # Verify token
-        payload = jwt.decode(token, 'your-secret-key', algorithms=['HS256'])
-        user_id = payload['user_id']
-        
-        # Hash new password
-        hashed_password = pwd_context.hash(new_password['password'])
-        
+        # Verify token and get user_id
+        try:
+            payload = jwt.decode(token, 'your-secret-key', algorithms=['HS256'])
+            user_id = payload.get('user_id')
+            if not user_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid token"
+                )
+        except PyJWTError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired token"
+            )
+
+        # Hash the new password
+        hashed_password = pwd_context.hash(password_data['password'])
+
         # Update password in database
-        await db.update_user_password(user_id, hashed_password)
-        
+        success = await db.update_user_password(user_id, hashed_password)
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update password"
+            )
+
         return {"message": "Password reset successful"}
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=400, detail="Reset link has expired")
-    except jwt.JWTError:
-        raise HTTPException(status_code=400, detail="Invalid reset token")
+
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Password reset error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to reset password"
+        )
 
 # Delete Account
 @app.delete("/api/users/{user_id}")

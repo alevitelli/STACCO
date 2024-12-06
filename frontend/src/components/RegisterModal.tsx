@@ -16,7 +16,8 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
     password: '',
     nome: '',
     cognome: '',
-    indirizzo: '',
+    citta: '',
+    cap: '',
     dataNascita: '',
     telefono: ''
   })
@@ -25,7 +26,7 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
 
   const checkEmailExists = async (email: string) => {
     try {
-      const response = await fetch('http://localhost:8000/api/users/check-email', {
+      const response = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/users/check-email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -116,28 +117,51 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
       await handleContinue()
     } else if (step === 2) {
       try {
-        const response = await fetch('http://localhost:8000/api/users/register', {
+        const registrationData = {
+          email: formData.email,
+          password: formData.password,
+          nome: formData.nome,
+          cognome: formData.cognome,
+          citta: formData.citta,
+          cap: formData.cap,
+          data_nascita: formData.dataNascita,
+          telefono: formData.telefono
+        }
+
+        console.log('Sending registration data:', registrationData)
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/register`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(formData)
+          body: JSON.stringify(registrationData)
         })
 
+        console.log('Response status:', response.status)
         const data = await response.json()
+        console.log('Response data:', data)
 
         if (!response.ok) {
-          throw new Error(data.detail || 'Error during registration')
+          throw new Error(data.detail || 'Registration failed')
+        }
+
+        if (data.user && data.user.id) {
+          localStorage.setItem('userId', data.user.id.toString())
         }
 
         setStep(3)
         
         if (onRegisterSuccess) {
           onRegisterSuccess(data.user)
+          
+          setTimeout(() => {
+            window.location.href = '/account'
+          }, 2000)
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Registration error:', error)
-        setError('Error during registration. Please try again.')
+        setError(error.message || 'Errore durante la registrazione. Riprova.')
       }
     }
   }
@@ -145,11 +169,15 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
   const handleRegistrationSuccess = async (userData: any) => {
     setStep(3)
     try {
-      await fetch('http://localhost:8000/api/users/send-verification', {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/send-verification`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: userData.email })
       });
+
+      setTimeout(() => {
+        window.location.href = '/account'
+      }, 2000)
     } catch (error) {
       console.error('Error sending verification email:', error);
     }
@@ -192,7 +220,7 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
                 <PasswordStrengthIndicator password={formData.password} />
               </div>
 
-              {error && (
+              {error && typeof error === 'string' && (
                 <p className="text-red-500 text-sm text-center">{error}</p>
               )}
 
@@ -283,17 +311,32 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-emerald-600 text-sm">
-                  Indirizzo*
-                </label>
-                <input
-                  type="text"
-                  value={formData.indirizzo}
-                  onChange={(e) => setFormData({...formData, indirizzo: e.target.value})}
-                  className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-emerald-600 focus:ring-0"
-                  required
-                />
+              <div className="flex space-x-2">
+                <div className="flex-1 space-y-1">
+                  <label className="text-emerald-600 text-sm">
+                    Città*
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.citta}
+                    onChange={(e) => setFormData({...formData, citta: e.target.value})}
+                    className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-emerald-600 focus:ring-0"
+                    required
+                  />
+                </div>
+
+                <div className="w-1/3 space-y-1">
+                  <label className="text-emerald-600 text-sm">
+                    CAP*
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.cap}
+                    onChange={(e) => setFormData({...formData, cap: e.target.value})}
+                    className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-emerald-600 focus:ring-0"
+                    required
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -322,14 +365,24 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
                 />
               </div>
 
-              {error && (
+              {error && typeof error === 'string' && (
                 <p className="text-red-500 text-sm text-center">{error}</p>
               )}
 
               <button
                 type="submit"
                 className="w-full bg-emerald-600 text-white p-3 rounded-xl 
-                         hover:bg-emerald-700 transition-colors duration-200"
+                         hover:bg-emerald-700 transition-colors duration-200 
+                         cursor-pointer active:bg-emerald-800 
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={
+                  !formData.nome || 
+                  !formData.cognome || 
+                  !formData.citta || 
+                  !formData.cap || 
+                  !formData.dataNascita || 
+                  !formData.telefono
+                }
               >
                 Registrati
               </button>
@@ -343,18 +396,14 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76" />
                 </svg>
               </div>
-              <h3 className="text-xl mb-4">Controlla la tua email</h3>
+              <h3 className="text-xl mb-4">Registrazione completata!</h3>
               <p className="text-gray-600">
                 Abbiamo inviato un link di verifica a<br/>
                 <span className="font-medium">{formData.email}</span>
               </p>
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="mt-6 text-emerald-600 hover:underline"
-              >
-                Ho già verificato la mia email
-              </button>
+              <p className="text-sm text-emerald-600 mt-4">
+                Verrai reindirizzato al tuo account tra pochi secondi...
+              </p>
             </div>
           )}
         </form>

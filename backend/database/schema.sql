@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS cinemas (
     latitude REAL,
     longitude REAL,
     website TEXT,
+    icon_url TEXT,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -37,7 +38,8 @@ CREATE TABLE IF NOT EXISTS users (
     password TEXT NOT NULL,
     nome TEXT NOT NULL,
     cognome TEXT NOT NULL,
-    indirizzo TEXT NOT NULL,
+    citta TEXT NOT NULL,
+    cap TEXT NOT NULL,
     data_nascita DATE NOT NULL,
     telefono TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

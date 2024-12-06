@@ -16,6 +16,7 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
   })
   const [error, setError] = useState('')
   const [showRegister, setShowRegister] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   if (!isOpen) return null
 
@@ -69,6 +70,39 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
     }
   }
 
+  const handlePasswordReset = async () => {
+    setError('')
+    if (!formData.email) {
+      setError('Inserisci la tua email per reimpostare la password')
+      return
+    }
+
+    console.log('Requesting password reset for:', formData.email)
+
+    try {
+      const response = await fetch('http://localhost:8000/api/users/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: formData.email })
+      })
+
+      console.log('Password reset response:', response.status)
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error('Password reset error details:', errorData)
+        throw new Error('Error requesting password reset')
+      }
+
+      setError('Se l\'email esiste nel sistema, riceverai il link per reimpostare la password')
+    } catch (error) {
+      console.error('Password reset error:', error)
+      setError('Si è verificato un errore. Riprova più tardi.')
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-md w-full p-8 relative">
@@ -90,17 +124,24 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
             />
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Password
             </label>
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-emerald-600 focus:ring-0"
               required
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-4 top-[38px] text-gray-600"
+            >
+              {showPassword ? "👁️" : "👁️‍🗨️"}
+            </button>
           </div>
 
           {error && (
@@ -118,7 +159,7 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
           <div className="text-center">
             <button
               type="button"
-              onClick={() => {/* TODO: Implement password reset */}}
+              onClick={handlePasswordReset}
               className="text-sm text-emerald-600 hover:underline"
             >
               Password dimenticata?

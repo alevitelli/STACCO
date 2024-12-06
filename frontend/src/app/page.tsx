@@ -11,13 +11,25 @@ interface Movie {
   poster_url: string
 }
 
+interface Cinema {
+  id: string
+  name: string
+  icon_url: string
+  website: string
+}
+
 export default function HomePage() {
   const router = useRouter()
   const [featuredMovies, setFeaturedMovies] = useState<Movie[]>([])
-  const [featuredCinemas, setFeaturedCinemas] = useState<any[]>([])
+  const [featuredCinemas, setFeaturedCinemas] = useState<Cinema[]>([])
   const [isRegisterOpen, setIsRegisterOpen] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   useEffect(() => {
+    // Add check for logged in status
+    const userId = localStorage.getItem('userId')
+    setIsLoggedIn(!!userId)
+
     // Fetch some featured movies for the showcase
     fetch('http://localhost:8000/api/movies')
       .then(res => res.json())
@@ -63,20 +75,20 @@ export default function HomePage() {
           <h1 className="text-4xl sm:text-6xl font-raleway tracking-tight text-gray-900 mb-4 sm:mb-6">
             La destinazione per il cinema
           </h1>
-          <p className="text-lg sm:text-lg text-gray-600 max-w-xl mx-auto px-4">
+          <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto px-4">
             Cerca e prenota biglietti per tutti i cinema Roma in un unico posto.
             Scegli tra centinaia di film in programmazione.
           </p>
         </div>
 
-        {/* CTA Button */}
+        {/* Updated CTA Button */}
         <div className="flex justify-center mb-12 sm:mb-16">
           <button
-            onClick={() => setIsRegisterOpen(true)}
+            onClick={() => isLoggedIn ? router.push('/movies') : setIsRegisterOpen(true)}
             className="bg-emerald-600 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-full 
                      hover:bg-black transition-colors duration-200 text-sm sm:text-base"
           >
-            Registrati
+            {isLoggedIn ? 'Inizia la ricerca' : 'Registrati'}
           </button>
         </div>
 
@@ -182,17 +194,29 @@ export default function HomePage() {
               </button>
             </div>
             <div className="flex-1 px-4 sm:px-0">
-              <div className="relative aspect-video rounded-xl overflow-hidden">
-                <img
-                  src={featuredMovies[0]?.poster_url || '/cinema-placeholder.jpg'}
-                  alt="Cinema"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                  <span className="text-white text-xl sm:text-2xl font-bold">
-                    50+ Cinema a Roma
-                  </span>
-                </div>
+              <div className="grid grid-cols-2 gap-4 sm:gap-6">
+                {featuredCinemas.slice(0, 4).map((cinema) => (
+                  <div
+                    key={cinema.id}
+                    onClick={() => router.push('/cinemas')}
+                    className="aspect-video bg-gray-50 rounded-xl overflow-hidden p-4 
+                             hover:bg-gray-100 transition-colors duration-200 cursor-pointer
+                             flex items-center justify-center"
+                  >
+                    <img
+                      src={cinema.icon_url}
+                      alt={cinema.name}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  </div>
+                ))}
+                {/* Add placeholder boxes if we have less than 4 cinemas */}
+                {Array.from({ length: Math.max(0, 4 - featuredCinemas.length) }).map((_, index) => (
+                  <div
+                    key={`placeholder-${index}`}
+                    className="aspect-video bg-gray-50 rounded-xl overflow-hidden p-4"
+                  />
+                ))}
               </div>
             </div>
           </div>

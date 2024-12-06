@@ -1,12 +1,10 @@
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import date
 
 class Showtime(BaseModel):
-    date: str  # ISO format date string
+    date: str
     time: str
-    cinema: str
-    booking_link: str = "#"
+    booking_link: str
 
 class Movie(BaseModel):
     id: str
@@ -15,5 +13,14 @@ class Movie(BaseModel):
     duration: int
     language: str
     poster_url: str
-    cinemas: str
-    showtimes: List[Showtime] = []
+    showtimes: List[Showtime]
+
+class Cinema(BaseModel):
+    id: str
+    name: str
+    cinema_chain: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    website: str
+    icon_url: str
+    currentMovies: List[Movie] = []

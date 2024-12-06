@@ -10,7 +10,8 @@ interface UserData {
   email: string
   nome: string
   cognome: string
-  indirizzo: string
+  citta: string
+  cap: string
   dataNascita: string
   telefono: string
   profilePicture?: string
@@ -47,7 +48,7 @@ export default function AccountPage() {
       }
 
       try {
-        const response = await fetch(`http://localhost:8000/api/users/${userId}`)
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/${userId}`)
         if (!response.ok) {
           throw new Error('Failed to fetch user data')
         }
@@ -68,7 +69,7 @@ export default function AccountPage() {
 
   const fetchUserData = async (userId: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${userId}`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/${userId}`)
       if (!response.ok) throw new Error('Failed to fetch user data')
       const data = await response.json()
       setUserData(data)
@@ -81,7 +82,7 @@ export default function AccountPage() {
 
   const fetchMovieHistory = async (userId: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${userId}/movie-history`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/${userId}/movie-history`)
       if (!response.ok) throw new Error('Failed to fetch movie history')
       const data = await response.json()
       setMovieHistory(data)
@@ -94,7 +95,7 @@ export default function AccountPage() {
     if (!editedData || !userData) return
 
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${userData.id}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/${userData.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -123,7 +124,7 @@ export default function AccountPage() {
       formData.append('profile_picture', file)
 
       try {
-        const response = await fetch(`http://localhost:8000/api/users/${userData?.id}/profile-picture`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/${userData?.id}/profile-picture`, {
           method: 'POST',
           body: formData,
         })
@@ -140,7 +141,7 @@ export default function AccountPage() {
 
   const handleResendVerification = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${userData?.id}/resend-verification`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/${userData?.id}/resend-verification`, {
         method: 'POST',
       })
       if (!response.ok) throw new Error('Failed to resend verification email')
@@ -153,7 +154,7 @@ export default function AccountPage() {
 
   const handleResetPassword = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/users/reset-password`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/reset-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -174,9 +175,6 @@ export default function AccountPage() {
 
   const confirmDeleteAccount = async () => {
     setIsDeleteModalOpen(false)
-    if (!confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-      return
-    }
 
     try {
       const userId = localStorage.getItem('userId')
@@ -184,7 +182,7 @@ export default function AccountPage() {
         throw new Error('No user ID found')
       }
 
-      const response = await fetch(`http://localhost:8000/api/users/${userId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/${userId}`, {
         method: 'DELETE',
       })
 
@@ -207,151 +205,168 @@ export default function AccountPage() {
     <div className="min-h-screen bg-white">
       <Navigation />
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
         <div className="max-w-3xl mx-auto">
-          <h1 className="text-4xl font-raleway tracking-tight text-gray-900 mb-8">
+          <h1 className="text-2xl sm:text-4xl font-raleway tracking-tight text-gray-900 mb-4 sm:mb-8 text-center sm:text-left">
             Il mio account
           </h1>
 
           {error && (
-            <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
+            <div className="bg-red-50 text-red-600 p-3 sm:p-4 rounded-lg mb-4 sm:mb-6 text-sm sm:text-base">
               {error}
             </div>
           )}
 
-          <div className="bg-white shadow rounded-2xl p-6 mb-8">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-raleway text-gray-900">
+          <div className="bg-white shadow rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-8">
+            <div className="flex justify-between items-center mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-raleway text-gray-900">
                 Informazioni personali
               </h2>
               <button
                 onClick={() => setIsEditing(!isEditing)}
-                className="text-emerald-600 hover:text-emerald-700"
+                className="text-emerald-600 hover:text-emerald-700 text-sm sm:text-base"
               >
                 {isEditing ? 'Annulla' : 'Modifica'}
               </button>
             </div>
 
             {isEditing ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div>
-                    <label className="block text-sm text-emerald-600">Nome</label>
+                    <label className="block text-xs sm:text-sm text-emerald-600">Nome</label>
                     <input
                       type="text"
                       value={editedData?.nome}
                       onChange={(e) => setEditedData({...editedData!, nome: e.target.value})}
-                      className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-emerald-600 focus:ring-0"
+                      className="w-full p-2 sm:p-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-emerald-600 focus:ring-0"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-emerald-600">Cognome</label>
+                    <label className="block text-xs sm:text-sm text-emerald-600">Cognome</label>
                     <input
                       type="text"
                       value={editedData?.cognome}
                       onChange={(e) => setEditedData({...editedData!, cognome: e.target.value})}
-                      className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-emerald-600 focus:ring-0"
+                      className="w-full p-2 sm:p-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-emerald-600 focus:ring-0"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex space-x-2">
+                  <div className="flex-1">
+                    <label className="block text-xs sm:text-sm text-emerald-600">Città</label>
+                    <input
+                      type="text"
+                      value={editedData?.citta}
+                      onChange={(e) => setEditedData({...editedData!, citta: e.target.value})}
+                      className="w-full p-2 sm:p-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-emerald-600 focus:ring-0"
+                    />
+                  </div>
+                  <div className="w-1/3">
+                    <label className="block text-xs sm:text-sm text-emerald-600">CAP</label>
+                    <input
+                      type="text"
+                      value={editedData?.cap}
+                      onChange={(e) => setEditedData({...editedData!, cap: e.target.value})}
+                      className="w-full p-2 sm:p-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-emerald-600 focus:ring-0"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm text-emerald-600">Indirizzo</label>
-                  <input
-                    type="text"
-                    value={editedData?.indirizzo}
-                    onChange={(e) => setEditedData({...editedData!, indirizzo: e.target.value})}
-                    className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-emerald-600 focus:ring-0"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-emerald-600">Telefono</label>
+                  <label className="block text-xs sm:text-sm text-emerald-600">Telefono</label>
                   <input
                     type="tel"
                     value={editedData?.telefono}
                     onChange={(e) => setEditedData({...editedData!, telefono: e.target.value})}
-                    className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-emerald-600 focus:ring-0"
+                    className="w-full p-2 sm:p-3 text-sm sm:text-base border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-emerald-600 focus:ring-0"
                   />
                 </div>
 
                 <button
                   onClick={handleSave}
-                  className="w-full bg-emerald-600 text-white p-3 rounded-xl 
+                  className="w-full bg-emerald-600 text-white p-2.5 sm:p-3 rounded-lg sm:rounded-xl text-sm sm:text-base
                            hover:bg-emerald-700 transition-colors duration-200"
                 >
                   Salva modifiche
                 </button>
               </div>
             ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div>
-                    <label className="block text-sm text-gray-500">Nome</label>
-                    <p className="text-lg">{userData.nome}</p>
+                    <label className="block text-xs sm:text-sm text-gray-500">Nome</label>
+                    <p className="text-base sm:text-lg">{userData.nome}</p>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-500">Cognome</label>
-                    <p className="text-lg">{userData.cognome}</p>
+                    <label className="block text-xs sm:text-sm text-gray-500">Cognome</label>
+                    <p className="text-base sm:text-lg">{userData.cognome}</p>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-500">Email</label>
-                  <p className="text-lg">{userData.email}</p>
+                  <label className="block text-xs sm:text-sm text-gray-500">Email</label>
+                  <p className="text-base sm:text-lg">{userData.email}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div>
+                    <label className="block text-xs sm:text-sm text-gray-500">Città</label>
+                    <p className="text-base sm:text-lg">{userData.citta}</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs sm:text-sm text-gray-500">CAP</label>
+                    <p className="text-base sm:text-lg">{userData.cap}</p>
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-500">Indirizzo</label>
-                  <p className="text-lg">{userData.indirizzo}</p>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-500">Telefono</label>
-                  <p className="text-lg">{userData.telefono}</p>
+                  <label className="block text-xs sm:text-sm text-gray-500">Telefono</label>
+                  <p className="text-base sm:text-lg">{userData.telefono}</p>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="bg-white shadow rounded-2xl p-6">
-            <h2 className="text-2xl font-raleway text-gray-900 mb-6">
+          <div className="bg-white shadow rounded-xl sm:rounded-2xl p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-raleway text-gray-900 mb-4 sm:mb-6">
               Storico film
             </h2>
             
             {movieHistory.length > 0 ? (
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {movieHistory.map((movie) => (
                   <div
                     key={`${movie.id}-${movie.watchDate}`}
-                    className="flex items-center justify-between p-4 border-2 border-gray-100 rounded-xl"
+                    className="flex items-center justify-between p-3 sm:p-4 border-2 border-gray-100 rounded-lg sm:rounded-xl"
                   >
                     <div>
-                      <h3 className="font-medium">{movie.title}</h3>
-                      <p className="text-sm text-gray-500">{movie.cinema}</p>
+                      <h3 className="font-medium text-sm sm:text-base">{movie.title}</h3>
+                      <p className="text-xs sm:text-sm text-gray-500">{movie.cinema}</p>
                     </div>
-                    <p className="text-sm text-gray-500">{movie.watchDate}</p>
+                    <p className="text-xs sm:text-sm text-gray-500">{movie.watchDate}</p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">
+              <p className="text-gray-500 text-center py-6 sm:py-8 text-sm sm:text-base">
                 Non hai ancora visto nessun film
               </p>
             )}
           </div>
 
-          <div className="bg-white shadow rounded-2xl p-6 mt-8">
-            <h2 className="text-2xl font-raleway text-gray-900 mb-6">
+          <div className="bg-white shadow rounded-xl sm:rounded-2xl p-4 sm:p-6 mt-4 sm:mt-8">
+            <h2 className="text-xl sm:text-2xl font-raleway text-gray-900 mb-4 sm:mb-6">
               Account Management
             </h2>
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <button
                 onClick={handleResetPassword}
-                className="w-full text-left px-4 py-2 text-emerald-600 hover:text-emerald-700 hover:bg-gray-50 rounded-lg"
+                className="w-full text-left px-3 sm:px-4 py-2 text-sm sm:text-base text-emerald-600 hover:text-emerald-700 hover:bg-gray-50 rounded-lg"
               >
                 Reset Password
               </button>
               <button
                 onClick={() => setIsDeleteModalOpen(true)}
-                className="w-full text-left px-4 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                className="w-full text-left px-3 sm:px-4 py-2 text-sm sm:text-base text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
               >
                 Delete Account
               </button>

@@ -1,12 +1,49 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import CinemaCard from '@/components/CinemaCard'
+import SearchFilters from '@/components/SearchFilters'
+
+interface Cinema {
+  id: string
+  name: string
+  cinema_chain: string
+  icon_url: string
+  website: string
+  currentMovies: any[]
+}
 
 export default function CinemasPage() {
-  const [cinemas, setCinemas] = useState<any[]>([]) // Initialize as empty array with type
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  
+  const [cinemas, setCinemas] = useState<Cinema[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '')
+  const [selectedChain, setSelectedChain] = useState(searchParams.get('chain') || '')
+
+  const handleFilterChange = (type: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    
+    switch(type) {
+      case 'search':
+        setSearchQuery(value)
+        break
+      case 'chain':
+        setSelectedChain(value)
+        break
+    }
+
+    if (value) {
+      params.set(type, encodeURIComponent(value))
+    } else {
+      params.delete(type)
+    }
+
+    router.push(`/cinemas?${params.toString()}`, { scroll: false })
+  }
 
   useEffect(() => {
     fetch('http://localhost:8000/api/cinemas')
@@ -25,10 +62,20 @@ export default function CinemasPage() {
       })
       .catch(error => {
         console.error('Error fetching cinemas:', error)
-        setCinemas([]) // Ensure cinemas is always an array
+        setCinemas([])
         setLoading(false)
       })
   }, [])
+
+  const filteredCinemas = cinemas.filter(cinema => {
+    const matchesSearch = cinema.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesChain = !selectedChain || cinema.cinema_chain === selectedChain
+    return matchesSearch && matchesChain
+  })
+
+  const availableChains = Array.from(new Set(
+    cinemas.map(cinema => cinema.cinema_chain)
+  )).sort()
 
   if (loading) {
     return (
@@ -36,7 +83,7 @@ export default function CinemasPage() {
         <Navigation />
         <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="text-center py-12">
-            <p className="text-gray-500 font-geist-sans">Loading cinemas...</p>
+            <p className="text-gray-500">Caricamento cinema in corso...</p>
           </div>
         </main>
       </div>
@@ -46,27 +93,38 @@ export default function CinemasPage() {
   return (
     <div className="min-h-screen bg-white">
       <Navigation />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
-        {/* Pink badge */}
-        <div className="flex justify-center mb-8">
-          <span className="bg-pink-100 text-pink-800 px-6 py-2 rounded-full text-sm">
-            Discover Our Cinemas
+      
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10">
+        <div className="flex justify-center mb-6 sm:mb-8">
+          <span className="bg-pink-100 text-pink-800 px-4 sm:px-6 py-2 rounded-full text-sm">
+            Esplora i Cinema
           </span>
         </div>
 
-        {/* Main heading */}
-        <div className="text-center mb-12">
-          <h1 className="text-6xl font-raleway tracking-tight text-gray-900 mb-6">
-            Independent Cinemas
+        <div className="text-center mb-4 sm:mb-12">
+          <h1 className="text-4xl sm:text-6xl font-raleway tracking-tight text-gray-900 mb-4 sm:mb-6">
+            Cinema Indipendenti
           </h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Explore Rome's unique collection of independent movie theaters
+          <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto px-4">
+            Scopri la collezione unica di cinema indipendenti di Roma
           </p>
         </div>
 
-        {/* Cinema Grid */}
+        <div className="mb-8 sm:mb-12">
+          <SearchFilters
+            onSearchChange={(value) => handleFilterChange('search', value)}
+            onLanguageChange={() => {}} // Not used for cinemas
+            onCinemaChange={(value) => handleFilterChange('chain', value)}
+            availableCinemas={availableChains}
+            selectedCinema={selectedChain}
+            selectedLanguage=""
+            placeholderText="Cerca cinema..."
+            filterLabel="Catena"
+          />
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {cinemas.map((cinema) => (
+          {filteredCinemas.map((cinema) => (
             <CinemaCard key={cinema.id} {...cinema} />
           ))}
         </div>

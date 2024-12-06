@@ -1,60 +1,42 @@
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 interface CinemaCardProps {
     id: string;
     name: string;
     cinema_chain: string;
-    address: string;
-    latitude: number;
-    longitude: number;
+    icon_url: string;
     website: string;
-    currentMovies: Array<{
-      id: string;
-      title: string;
-      times: string[];
-    }>;
   }
 
 export default function CinemaCard({
   id,
   name,
-  address,
-  website,
-  currentMovies,
-  cinema_chain
+  cinema_chain,
+  icon_url,
+  website
 }: CinemaCardProps) {
+  const router = useRouter()
+
   return (
-    <div className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300">
+    <div 
+      onClick={() => router.push(`/cinemas/${id}`)}
+      className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg 
+                 transition-all duration-300 cursor-pointer"
+    >
+      <div className="aspect-video bg-gray-50 p-8 flex items-center justify-center">
+        <img
+          src={icon_url}
+          alt={name}
+          className="max-w-full max-h-full object-contain"
+        />
+      </div>
       <div className="p-6">
         <h2 className="font-serif text-2xl font-medium tracking-tight mb-2">
           {name}
         </h2>
-        <p className="text-gray-600 mb-4">
-          {address}
-        </p>
-        <p className="text-gray-600 mb-4">
+        <p className="text-gray-600">
           {cinema_chain}
         </p>
-
-        <div className="mt-6">
-          <h3 className="font-medium text-gray-900 mb-3">
-            Now Playing
-          </h3>
-          <div className="space-y-2">
-            {currentMovies?.map((movie) => (
-              <Link
-                key={movie.id}
-                href={`/movies/${movie.id}`}
-                className="block text-sm text-gray-600 hover:text-pink-800 transition-colors"
-              >
-                {movie.title}
-                <span className="text-gray-400 ml-2">
-                  • {movie.times.join(', ')}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )

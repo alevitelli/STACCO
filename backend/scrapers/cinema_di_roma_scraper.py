@@ -22,32 +22,56 @@ class CinemaDiRomaScraper(BaseScraper):
         return self.session
 
     async def _initialize_cinemas(self):
-        """Fetch cinema URLs from the main page"""
+        """Fetch cinema URLs and icons from the main page"""
         if self.cinemas:  # Already initialized
             return
         
-        # Define the cinema names mapping
-        cinema_names = {
-            'intrastevere': 'Cinema Intrastevere',
-            'lux': 'Multisala Lux',
-            'odeon': 'Multisala Odeon',
-            'tibur': 'Cinema Tibur'
-        }
-        
-        # Define the URLs mapping
-        cinema_urls = {
-            'intrastevere': 'programmazione-cinema-intrastevere',
-            'lux': 'programmazione-multisala-lux',
-            'odeon': 'programmazione-multisala-odeon',
-            'tibur': 'programmazione-cinema-tibur'
-        }
-        
-        # Initialize cinemas with known data
-        for cinema_id, url_path in cinema_urls.items():
-            self.cinemas[cinema_id] = {
-                'name': cinema_names[cinema_id],
-                'url_path': url_path
-            }
+        session = await self._get_session()
+        async with session.get(self.base_url) as response:
+            if response.status != 200:
+                return
+            
+            html = await response.text()
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Find all cinema blocks
+            cinema_blocks = soup.find_all('div', class_='singleService')
+            
+            for block in cinema_blocks:
+                # Find the image element
+                img = block.find('img')
+                if not img:
+                    continue
+                    
+                # Extract cinema ID from alt text or image filename
+                alt_text = img['alt']
+                cinema_id = alt_text.lower().replace('cinema', '').strip()
+                
+                # Get the icon URL
+                icon_url = urljoin(self.base_url, img['src'])
+                
+                # Map to full names
+                cinema_names = {
+                    'intrastevere': 'Cinema Intrastevere',
+                    'lux': 'Multisala Lux',
+                    'odeon': 'Multisala Odeon',
+                    'tibur': 'Cinema Tibur'
+                }
+                
+                # Map to URL paths
+                cinema_urls = {
+                    'intrastevere': 'programmazione-cinema-intrastevere',
+                    'lux': 'programmazione-multisala-lux',
+                    'odeon': 'programmazione-multisala-odeon',
+                    'tibur': 'programmazione-cinema-tibur'
+                }
+                
+                if cinema_id in cinema_names:
+                    self.cinemas[cinema_id] = {
+                        'name': cinema_names[cinema_id],
+                        'url_path': cinema_urls[cinema_id],
+                        'icon_url': icon_url
+                    }
 
     async def get_cinemas(self) -> List[Dict]:
         """Get all cinemas from Cinema di Roma chain"""
@@ -71,7 +95,8 @@ class CinemaDiRomaScraper(BaseScraper):
                     'cinema_chain': self.cinema_chain_name,
                     'latitude': cinema_locations[cinema_id]['lat'],
                     'longitude': cinema_locations[cinema_id]['lon'],
-                    'website': f"{self.base_url}/{cinema_info['url_path']}"
+                    'website': f"{self.base_url}/{cinema_info['url_path']}",
+                    'icon_url': cinema_info['icon_url']
                 }
                 cinemas_data.append(cinema_data)
             except Exception as e:

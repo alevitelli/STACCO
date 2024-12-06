@@ -13,6 +13,8 @@ async def test_get_cinemas():
     assert all('name' in cinema for cinema in cinemas)
     assert all('latitude' in cinema for cinema in cinemas)
     assert all('longitude' in cinema for cinema in cinemas)
+    assert all('icon_url' in cinema for cinema in cinemas)
+    assert all(cinema['icon_url'].startswith('http') for cinema in cinemas)
 
 @pytest.mark.asyncio
 async def test_get_showtimes():

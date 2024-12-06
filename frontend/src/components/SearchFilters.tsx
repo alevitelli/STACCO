@@ -5,6 +5,8 @@ interface SearchFiltersProps {
   availableCinemas: string[];
   selectedCinema: string;
   selectedLanguage: string;
+  placeholderText?: string;
+  filterLabel?: string;
 }
 
 export default function SearchFilters({ 
@@ -13,7 +15,9 @@ export default function SearchFilters({
   onCinemaChange,
   availableCinemas,
   selectedCinema,
-  selectedLanguage
+  selectedLanguage,
+  placeholderText = "Cerca film...",
+  filterLabel = "Cinema"
 }: SearchFiltersProps) {
   return (
     <div className="max-w-4xl mx-auto bg-gray-50/50 rounded-2xl sm:rounded-3xl p-4 sm:p-6 backdrop-blur-sm border border-black/5 shadow-sm">
@@ -22,7 +26,7 @@ export default function SearchFilters({
         <div className="relative">
           <input
             type="text"
-            placeholder="Cerca film..."
+            placeholder={placeholderText}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white
                      font-raleway text-sm sm:text-base placeholder:text-gray-400
@@ -39,22 +43,24 @@ export default function SearchFilters({
 
         {/* Filters Row */}
         <div className="flex flex-wrap gap-2 sm:gap-3">
-          <select
-            onChange={(e) => onLanguageChange(e.target.value)}
-            value={selectedLanguage}
-            className="flex-1 px-4 sm:px-6 py-3 sm:py-4 bg-white
-                     font-raleway text-sm sm:text-base
-                     rounded-lg sm:rounded-xl border border-black/5
-                     focus:outline-none focus:ring-2 focus:ring-[#0D0C22]/10
-                     transition-all duration-200 shadow-sm
-                     appearance-none
-                     min-w-[140px] sm:min-w-[180px]
-                     cursor-pointer"
-          >
-            <option value="">Tutte le lingue</option>
-            <option value="Original">Versione Originale</option>
-            <option value="Italiano">Italiano</option>
-          </select>
+          {selectedLanguage !== undefined && (
+            <select
+              onChange={(e) => onLanguageChange(e.target.value)}
+              value={selectedLanguage}
+              className="flex-1 px-4 sm:px-6 py-3 sm:py-4 bg-white
+                       font-raleway text-sm sm:text-base
+                       rounded-lg sm:rounded-xl border border-black/5
+                       focus:outline-none focus:ring-2 focus:ring-[#0D0C22]/10
+                       transition-all duration-200 shadow-sm
+                       appearance-none
+                       min-w-[140px] sm:min-w-[180px]
+                       cursor-pointer"
+            >
+              <option value="">Tutte le lingue</option>
+              <option value="Original">Versione Originale</option>
+              <option value="Italiano">Italiano</option>
+            </select>
+          )}
 
           <select
             onChange={(e) => onCinemaChange(e.target.value)}
@@ -68,7 +74,7 @@ export default function SearchFilters({
                      min-w-[140px] sm:min-w-[180px]
                      cursor-pointer"
           >
-            <option value="">Tutti i Cinema</option>
+            <option value="">Tutti {filterLabel}</option>
             {availableCinemas.map(cinema => (
               <option key={cinema} value={cinema}>
                 {cinema}

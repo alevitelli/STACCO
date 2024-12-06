@@ -25,10 +25,18 @@ class DatabaseManager:
         with sqlite3.connect(self.db_path) as conn:
             for cinema in cinemas:
                 conn.execute("""
-                    INSERT OR REPLACE INTO cinemas (id, name, cinema_chain, latitude, longitude, website)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (cinema['id'], cinema['name'], cinema['cinema_chain'], 
-                     cinema['latitude'], cinema['longitude'], cinema['website']))
+                    INSERT OR REPLACE INTO cinemas 
+                    (id, name, cinema_chain, latitude, longitude, website, icon_url)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    cinema['id'], 
+                    cinema['name'], 
+                    cinema['cinema_chain'],
+                    cinema['latitude'], 
+                    cinema['longitude'], 
+                    cinema['website'],
+                    cinema.get('icon_url', '')  # Use get() to handle missing icons
+                ))
 
     async def update_movies_and_showtimes(self, cinema_id: str, movies: List[Dict]):
         with sqlite3.connect(self.db_path) as conn:
@@ -87,7 +95,7 @@ class DatabaseManager:
     async def get_all_cinemas(self):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
-                SELECT id, name, cinema_chain, latitude, longitude, website
+                SELECT id, name, cinema_chain, latitude, longitude, website, icon_url
                 FROM cinemas
                 ORDER BY name
             """)
@@ -124,23 +132,50 @@ class DatabaseManager:
             return movies
 
     async def create_user(self, user_data: dict):
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
-                INSERT INTO users (
-                    email, password, nome, cognome, 
-                    indirizzo, data_nascita, telefono
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                user_data["email"],
-                user_data["password"],
-                user_data["nome"],
-                user_data["cognome"],
-                user_data["indirizzo"],
-                user_data["dataNascita"],
-                user_data["telefono"]
-            ))
-            conn.commit()
-            return cursor.lastrowid
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("""
+                    INSERT INTO users (
+                        email, password, nome, cognome, 
+                        citta, cap, data_nascita, telefono,
+                        email_verified
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    user_data["email"],
+                    user_data["password"],
+                    user_data["nome"],
+                    user_data["cognome"],
+                    user_data["citta"],
+                    user_data["cap"],
+                    user_data["data_nascita"],
+                    user_data["telefono"],
+                    False  # email_verified default value
+                ))
+                conn.commit()
+                
+                # Get the created user data
+                user_id = cursor.lastrowid
+                cursor = conn.execute("""
+                    SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
+                    FROM users WHERE id = ?
+                """, (user_id,))
+                user = cursor.fetchone()
+                
+                if user:
+                    return {
+                        "id": user[0],
+                        "email": user[1],
+                        "nome": user[2],
+                        "cognome": user[3],
+                        "citta": user[4],
+                        "cap": user[5],
+                        "data_nascita": user[6],
+                        "telefono": user[7]
+                    }
+                return None
+        except Exception as e:
+            print(f"Database error in create_user: {str(e)}")
+            raise Exception(f"Database error: {str(e)}")
 
     async def get_user_by_email(self, email: str) -> Optional[dict]:
         try:
@@ -160,7 +195,7 @@ class DatabaseManager:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute("""
-                    SELECT id, email, nome, cognome, indirizzo, data_nascita, telefono
+                    SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
                     FROM users
                 """)
                 users = cursor.fetchall()
@@ -174,7 +209,7 @@ class DatabaseManager:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute("""
-                    SELECT id, email, nome, cognome, indirizzo, data_nascita, telefono
+                    SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
                     FROM users WHERE id = ?
                 """, (user_id,))
                 user = cursor.fetchone()
@@ -188,12 +223,13 @@ class DatabaseManager:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("""
                     UPDATE users 
-                    SET nome = ?, cognome = ?, indirizzo = ?, telefono = ?
+                    SET nome = ?, cognome = ?, citta = ?, cap = ?, telefono = ?
                     WHERE id = ?
                 """, (
                     user_data["nome"],
                     user_data["cognome"],
-                    user_data["indirizzo"],
+                    user_data["citta"],
+                    user_data["cap"],
                     user_data["telefono"],
                     user_id
                 ))
@@ -228,28 +264,94 @@ class DatabaseManager:
             WHERE id = $2 
             RETURNING *
         """
-        return await database.fetch_one(query, profile_picture_url, user_id)
+        return await sqlite3.fetch_one(query, profile_picture_url, user_id)
 
     async def update_user_password(self, user_id: int, hashed_password: str):
-        query = """
-            UPDATE users 
-            SET password = $1 
-            WHERE id = $2 
-            RETURNING *
-        """
-        return await database.fetch_one(query, hashed_password, user_id)
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                query = "UPDATE users SET password = ? WHERE id = ?"
+                cursor.execute(query, (hashed_password, user_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error updating password: {str(e)}")
+            return False
 
     async def delete_user(self, user_id: int):
         try:
-            # First, delete any related records (if you have foreign key constraints)
-            # For example:
-            # await database.execute("DELETE FROM user_movies WHERE user_id = $1", user_id)
-            
-            # Then delete the user
-            query = "DELETE FROM users WHERE id = $1"
-            result = await database.execute(query, user_id)
-            print(f"Delete query result: {result}")  # Debug log
-            return result
+            with sqlite3.connect(self.db_path) as conn:
+                # First delete related records
+                # conn.execute("DELETE FROM movie_watches WHERE user_id = ?", (user_id,))
+                
+                # Then delete the user
+                cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                conn.commit()
+                return cursor.rowcount > 0
         except Exception as e:
-            print(f"Database error in delete_user: {str(e)}")  # Debug log
-            raise e
+            print(f"Database error in delete_user: {str(e)}")
+            raise Exception(f"Database error: {str(e)}")
+
+    async def get_cinema(self, cinema_id: str) -> Optional[Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT id, name, cinema_chain, latitude, longitude, website, icon_url
+                FROM cinemas
+                WHERE id = ?
+            """, (cinema_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    'id': row[0],
+                    'name': row[1],
+                    'cinema_chain': row[2],
+                    'latitude': row[3],
+                    'longitude': row[4],
+                    'website': row[5],
+                    'icon_url': row[6]
+                }
+            return None
+
+    async def get_movies_by_cinema(self, cinema_id: str) -> List[Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT DISTINCT 
+                    m.id,
+                    m.title,
+                    m.genre,
+                    m.duration,
+                    m.language,
+                    m.poster_url,
+                    GROUP_CONCAT(s.date || ',' || s.time || ',' || s.booking_link) as showtimes
+                FROM movies m
+                JOIN showtimes s ON m.id = s.movie_id
+                WHERE s.cinema_id = ?
+                GROUP BY m.id
+            """, (cinema_id,))
+            
+            movies = []
+            for row in cursor.fetchall():
+                showtimes_data = row[6].split(',') if row[6] else []
+                showtimes = []
+                
+                # Process showtimes in groups of 3 (date, time, booking_link)
+                for i in range(0, len(showtimes_data), 3):
+                    if i + 2 < len(showtimes_data):
+                        showtimes.append({
+                            'date': showtimes_data[i],
+                            'time': showtimes_data[i + 1],
+                            'booking_link': showtimes_data[i + 2]
+                        })
+                
+                movies.append({
+                    'id': row[0],
+                    'title': row[1],
+                    'genre': row[2],
+                    'duration': row[3],
+                    'language': row[4],
+                    'poster_url': row[5],
+                    'showtimes': showtimes
+                })
+                
+            return movies
