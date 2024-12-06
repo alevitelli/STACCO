@@ -16,7 +16,7 @@ class DatabaseManager:
             self._init_db()
 
     def _init_db(self):
-        with open('backend/database/schema.sql') as f:
+        with open('database/schema.sql') as f:
             schema = f.read()
         with sqlite3.connect(self.db_path) as conn:
             conn.executescript(schema)
