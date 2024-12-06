@@ -22,7 +22,8 @@ ENV PORT=8000
 
 # Create an entrypoint script
 RUN echo '#!/bin/bash\n\
-python -m uvicorn backend.api.main:app --host 0.0.0.0 --port ${PORT:-8000}' > /app/entrypoint.sh \
+cd /app && \
+python -m uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}' > /app/entrypoint.sh \
     && chmod +x /app/entrypoint.sh
 
 # Use the entrypoint script

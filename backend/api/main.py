@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from datetime import datetime
-from backend.database.db_manager import DatabaseManager
+from database.db_manager import DatabaseManager
 from .models import Movie, Showtime, Cinema
 from typing import List, Optional
 import jwt
