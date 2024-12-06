@@ -1,0 +1,10 @@
+{
+    "name": "stacco-backend",
+    "version": "1.0.0",
+    "scripts": {
+      "start": "python -m uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT"
+    },
+    "engines": {
+      "node": ">=18.0.0"
+    }
+  }
