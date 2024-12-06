@@ -37,11 +37,15 @@ const formatDate = (date: string | null) => {
   return date
 }
 
-export default function MoviePage({ 
-  params 
-}: { 
-  params: Promise<{ id: string }> | { id: string }
-}) {
+// Update the interface for params
+interface MoviePageProps {
+  params: {
+    id: string;
+  };
+  searchParams?: { [key: string]: string | string[] | undefined };
+}
+
+export default function MoviePage({ params }: MoviePageProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [movie, setMovie] = useState<Movie | null>(null)
@@ -64,16 +68,10 @@ export default function MoviePage({
     router.push(`/movies/${movieId}?${params.toString()}`)
   }
 
-  // Handle params resolution
+  // Update the useEffect to use params.id directly
   useEffect(() => {
-    if ('then' in params) {
-      // If params is a promise, resolve it
-      params.then(resolvedParams => setMovieId(resolvedParams.id))
-    } else {
-      // If params is not a promise, use it directly
-      setMovieId(params.id)
-    }
-  }, [params])
+    setMovieId(params.id)
+  }, [params.id])
 
   useEffect(() => {
     if (!movieId) return
