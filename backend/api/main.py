@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from datetime import datetime
-from ..database.db_manager import DatabaseManager
+from backend.database.db_manager import DatabaseManager
 from .models import Movie, Showtime, Cinema
 from typing import List, Optional
 import jwt
@@ -13,6 +13,9 @@ import smtplib
 from pathlib import Path
 import os
 from jwt.exceptions import PyJWTError
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 db = DatabaseManager()
@@ -23,7 +26,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://stacco.vercel.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
