@@ -55,9 +55,9 @@ export default function AccountPage() {
         const data = await response.json()
         setUserData(data)
         setEditedData(data)
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching user data:', error)
-        if (error.message !== 'Failed to fetch user data') {
+        if (error?.message !== 'Failed to fetch user data') {
           localStorage.removeItem('userId')
           router.push('/')
         }

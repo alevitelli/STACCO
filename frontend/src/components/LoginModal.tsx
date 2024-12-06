@@ -28,7 +28,7 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
           setShowRegister(false)
           onClose()
         }}
-        onRegisterSuccess={onLoginSuccess}
+        onRegisterSuccess={onLoginSuccess || (() => {})}
       />
     )
   }
@@ -44,7 +44,7 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
     setError('')
     
     try {
-      const response = await fetch('http://localhost:8000/api/users/login', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,7 +80,7 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
     console.log('Requesting password reset for:', formData.email)
 
     try {
-      const response = await fetch('http://localhost:8000/api/users/reset-password', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/reset-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

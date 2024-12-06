@@ -1,7 +1,7 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Navigation from '@/components/Navigation'
 
 // Mock user data (in a real app, this would come from your auth system)
@@ -37,7 +37,7 @@ const PAYMENT_METHODS = [
   },
 ]
 
-export default function CheckoutPage() {
+function CheckoutContent() {
   const searchParams = useSearchParams()
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('credit-card')
 
@@ -179,5 +179,17 @@ export default function CheckoutPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-gray-500">Caricamento...</p>
+      </div>
+    }>
+      <CheckoutContent />
+    </Suspense>
   )
 }

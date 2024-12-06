@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import MovieCard from '@/components/MovieCard'
@@ -19,7 +19,14 @@ const formatDate = (date: string) => {
   return date
 }
 
-export default function MoviesPage() {
+interface Showtime {
+  date: string
+  time: string
+  cinema: string
+  booking_link: string
+}
+
+function MoviesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
@@ -124,11 +131,11 @@ export default function MoviesPage() {
     )
     
     const matchesCinema = !selectedCinema || 
-      movie.cinemas.split(',').map(c => c.trim()).includes(selectedCinema)
+      movie.cinemas.split(',').map((c: string) => c.trim()).includes(selectedCinema)
     
     const formattedSelectedDate = formatDate(selectedDate)
     const matchesDate = movie.showtimes && movie.showtimes.some(
-      showtime => showtime.date === formattedSelectedDate
+      (showtime: Showtime) => showtime.date === formattedSelectedDate
     )
 
     console.log('Filtering movie:', {
@@ -146,7 +153,7 @@ export default function MoviesPage() {
 
   const availableCinemas = Array.from(new Set(
     movies.flatMap(movie => 
-      movie.cinemas.split(',').map(cinema => cinema.trim())
+      movie.cinemas.split(',').map((cinema: string) => cinema.trim())
     )
   )).sort()
 
@@ -213,5 +220,22 @@ export default function MoviesPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function MoviesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50">
+        <Navigation />
+        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          <div className="text-center py-12">
+            <p className="text-gray-500">Caricamento film in corso...</p>
+          </div>
+        </main>
+      </div>
+    }>
+      <MoviesContent />
+    </Suspense>
   )
 }

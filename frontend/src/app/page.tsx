@@ -58,6 +58,12 @@ export default function HomePage() {
     }
   };
 
+  const handleRegisterSuccess = () => {
+    setIsRegisterOpen(false)
+    setIsLoggedIn(true)
+    router.push('/movies')
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <Navigation />
@@ -95,6 +101,7 @@ export default function HomePage() {
         <RegisterModal 
           isOpen={isRegisterOpen}
           onClose={() => setIsRegisterOpen(false)}
+          onRegisterSuccess={handleRegisterSuccess}
         />
 
         {/* Movie Showcase */}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import CinemaCard from '@/components/CinemaCard'
@@ -15,7 +15,7 @@ interface Cinema {
   currentMovies: any[]
 }
 
-export default function CinemasPage() {
+function CinemasContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
@@ -130,5 +130,22 @@ export default function CinemasPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function CinemasPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50">
+        <Navigation />
+        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          <div className="text-center py-12">
+            <p className="text-gray-500">Caricamento cinema in corso...</p>
+          </div>
+        </main>
+      </div>
+    }>
+      <CinemasContent />
+    </Suspense>
   )
 }
