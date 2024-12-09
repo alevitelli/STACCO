@@ -4,18 +4,22 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 class DatabaseManager:
-    def __init__(self):
-        # Get database path from environment variable or use default
-        self.db_path = os.getenv('DATABASE_PATH', os.path.join(os.path.dirname(__file__), 'cinema.db'))
+    def __init__(self, db_path="database/cinema.db"):
+        self.db_path = db_path
         self._ensure_db_exists()
 
     def _ensure_db_exists(self):
-        """Ensure database and tables exist"""
+        if not os.path.exists(os.path.dirname(self.db_path)):
+            os.makedirs(os.path.dirname(self.db_path))
+        
         if not os.path.exists(self.db_path):
-            print(f"Creating new database at {self.db_path}")
-            with sqlite3.connect(self.db_path) as conn:
-                with open(os.path.join(os.path.dirname(__file__), 'schema.sql'), 'r') as f:
-                    conn.executescript(f.read())
+            self._init_db()
+
+    def _init_db(self):
+        with open('database/schema.sql') as f:
+            schema = f.read()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executescript(schema)
 
     async def update_cinemas(self, cinemas: List[Dict]):
         with sqlite3.connect(self.db_path) as conn:

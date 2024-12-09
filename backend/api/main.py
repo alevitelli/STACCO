@@ -15,7 +15,6 @@ import os
 from jwt.exceptions import PyJWTError
 from dotenv import load_dotenv
 import sqlite3
-from cinema_di_roma_scraper import CinemaDiRomaScraper
 
 load_dotenv()
 
@@ -604,22 +603,3 @@ async def check_db_status():
             }
     except Exception as e:
         return {"error": str(e)}
-
-@app.post("/api/admin/initialize-db")
-async def initialize_database():
-    try:
-        # Initialize scrapers
-        scraper = CinemaDiRomaScraper()
-        
-        # Fetch cinemas
-        cinemas = await scraper.get_cinemas()
-        
-        # Fetch showtimes for each cinema
-        for cinema in cinemas:
-            await scraper.get_showtimes(cinema['id'])
-            
-        await scraper.close()
-        
-        return {"message": "Database initialized successfully", "cinemas_count": len(cinemas)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
