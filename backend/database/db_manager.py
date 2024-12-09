@@ -14,44 +14,52 @@ load_dotenv()
 
 class DatabaseManager:
     def __init__(self):
-        # Get database URL from environment
-        database_url = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
-        
-        logger.info(f"Initializing DatabaseManager with URL type: {'Railway' if database_url else 'Individual params'}")
-        
         try:
-            if database_url:
-                # Parse the DATABASE_URL
-                result = urlparse(database_url)
+            # First try Railway's default environment variables
+            if os.getenv('PGHOST'):  # Check if we're in Railway environment
                 self.db_config = {
-                    'dbname': result.path[1:],
-                    'user': result.username,
-                    'password': result.password,
-                    'host': result.hostname,
-                    'port': result.port or 5432
-                }
-            else:
-                # Use individual connection parameters as fallback
-                self.db_config = {
-                    'dbname': os.getenv('POSTGRES_DB', 'railway'),
-                    'user': os.getenv('POSTGRES_USER'),
+                    'dbname': os.getenv('PGDATABASE'),
+                    'user': os.getenv('PGUSER'),
                     'password': os.getenv('POSTGRES_PASSWORD'),
-                    'host': os.getenv('POSTGRES_HOST'),
-                    'port': int(os.getenv('POSTGRES_PORT', '5432'))
+                    'host': os.getenv('PGHOST'),
+                    'port': int(os.getenv('PGPORT', '5432'))
                 }
+                logger.info("Using Railway's default PostgreSQL environment variables")
+            else:
+                # Fallback to DATABASE_URL if present
+                database_url = os.getenv('DATABASE_URL')
+                if database_url:
+                    result = urlparse(database_url)
+                    self.db_config = {
+                        'dbname': result.path[1:],
+                        'user': result.username,
+                        'password': result.password,
+                        'host': result.hostname,
+                        'port': result.port or 5432
+                    }
+                    logger.info("Using DATABASE_URL configuration")
+                else:
+                    # Final fallback to custom environment variables
+                    self.db_config = {
+                        'dbname': os.getenv('POSTGRES_DB', 'railway'),
+                        'user': os.getenv('POSTGRES_USER'),
+                        'password': os.getenv('POSTGRES_PASSWORD'),
+                        'host': os.getenv('POSTGRES_HOST'),
+                        'port': int(os.getenv('POSTGRES_PORT', '5432'))
+                    }
+                    logger.info("Using custom PostgreSQL environment variables")
 
-            # Log connection details (excluding sensitive info)
-            logger.info(f"Connecting to database at {self.db_config['host']}:{self.db_config['port']}")
+            logger.info(f"Attempting connection to: {self.db_config['host']}:{self.db_config['port']}")
             
             # Test connection
             with self._get_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute('SELECT 1')
-                    logger.info("Database connection test successful")
+                    cur.execute('SELECT version()')
+                    version = cur.fetchone()[0]
+                    logger.info(f"Connected successfully to PostgreSQL: {version}")
                     
         except Exception as e:
-            logger.error(f"Error initializing database connection: {str(e)}")
-            # Re-raise the exception to handle it at a higher level
+            logger.error(f"Database initialization error: {str(e)}")
             raise
 
     def _get_connection(self):
