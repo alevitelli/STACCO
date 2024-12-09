@@ -663,3 +663,7 @@ async def get_debug_data():
                 }
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
