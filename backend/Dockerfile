@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Create database directory
+RUN mkdir -p /app/database
+
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 
@@ -19,6 +22,7 @@ COPY . .
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PORT=8000
+ENV DATABASE_PATH=/app/database/cinema.db
 
 # Create an entrypoint script
 RUN echo '#!/bin/bash\n\
