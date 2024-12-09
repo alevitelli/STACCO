@@ -14,6 +14,7 @@ from pathlib import Path
 import os
 from jwt.exceptions import PyJWTError
 from dotenv import load_dotenv
+import sqlite3
 
 load_dotenv()
 
@@ -71,19 +72,27 @@ class UserResponse(BaseModel):
 
 @app.get("/api/movies")
 async def get_movies():
-    movies = await db.get_all_movies()
-    
-    # Add real showtimes to each movie
-    for movie in movies:
-        showtimes = await db.get_movie_showtimes(movie["id"])
-        movie["showtimes"] = [{
-            "date": showtime["date"],
-            "time": showtime["time"],
-            "cinema": showtime["cinema_name"],
-            "booking_link": showtime["booking_link"]
-        } for showtime in showtimes]
-    
-    return movies
+    try:
+        print("Fetching movies from database...")  # Debug log
+        movies = await db.get_all_movies()
+        print(f"Found {len(movies)} movies")  # Debug log
+        
+        # Add real showtimes to each movie
+        for movie in movies:
+            print(f"Fetching showtimes for movie: {movie['id']}")  # Debug log
+            showtimes = await db.get_movie_showtimes(movie["id"])
+            print(f"Found {len(showtimes)} showtimes")  # Debug log
+            movie["showtimes"] = [{
+                "date": showtime["date"],
+                "time": showtime["time"],
+                "cinema": showtime["cinema_name"],
+                "booking_link": showtime["booking_link"]
+            } for showtime in showtimes]
+        
+        return movies
+    except Exception as e:
+        print(f"Error in get_movies: {str(e)}")  # Debug log
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/movies/{movie_id}")
 async def get_movie(movie_id: str):
@@ -569,3 +578,28 @@ async def delete_user(user_id: int):
             status_code=500,
             detail=f"Failed to delete account: {str(e)}"
         )
+
+@app.get("/api/debug/db-status")
+async def check_db_status():
+    try:
+        with sqlite3.connect(db.db_path) as conn:
+            # Check movies table
+            cursor = conn.execute("SELECT COUNT(*) FROM movies")
+            movie_count = cursor.fetchone()[0]
+            
+            # Check cinemas table
+            cursor = conn.execute("SELECT COUNT(*) FROM cinemas")
+            cinema_count = cursor.fetchone()[0]
+            
+            # Check showtimes table
+            cursor = conn.execute("SELECT COUNT(*) FROM showtimes")
+            showtime_count = cursor.fetchone()[0]
+            
+            return {
+                "database_path": db.db_path,
+                "movie_count": movie_count,
+                "cinema_count": cinema_count,
+                "showtime_count": showtime_count
+            }
+    except Exception as e:
+        return {"error": str(e)}

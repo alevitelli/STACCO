@@ -1,31 +1,30 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+import sqlite3
 import os
 from datetime import datetime
 from typing import List, Dict, Optional
 
 class DatabaseManager:
-    def __init__(self):
-        # Get DATABASE_URL from environment variable
-        database_url = os.getenv('DATABASE_URL')
-        if database_url and database_url.startswith('postgres://'):
-            database_url = database_url.replace('postgres://', 'postgresql://', 1)
-        
-        self.engine = create_engine(database_url or 'sqlite:///backend/database/cinema.db')
-        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+    def __init__(self, db_path="database/cinema.db"):
+        self.db_path = db_path
+        self._ensure_db_exists()
 
     def _ensure_db_exists(self):
-        # Create all tables if they don't exist
-        with open('backend/database/schema.sql') as f:
+        if not os.path.exists(os.path.dirname(self.db_path)):
+            os.makedirs(os.path.dirname(self.db_path))
+        
+        if not os.path.exists(self.db_path):
+            self._init_db()
+
+    def _init_db(self):
+        with open('database/schema.sql') as f:
             schema = f.read()
-            with self.engine.connect() as conn:
-                conn.execute(schema)
-                conn.commit()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executescript(schema)
 
     async def update_cinemas(self, cinemas: List[Dict]):
-        with self.SessionLocal() as db:
+        with sqlite3.connect(self.db_path) as conn:
             for cinema in cinemas:
-                db.execute("""
+                conn.execute("""
                     INSERT OR REPLACE INTO cinemas 
                     (id, name, cinema_chain, latitude, longitude, website, icon_url)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -40,10 +39,10 @@ class DatabaseManager:
                 ))
 
     async def update_movies_and_showtimes(self, cinema_id: str, movies: List[Dict]):
-        with self.SessionLocal() as db:
+        with sqlite3.connect(self.db_path) as conn:
             for movie in movies:
                 # Update movie info
-                db.execute("""
+                conn.execute("""
                     INSERT OR REPLACE INTO movies (id, title, genre, duration, language, poster_url)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (movie['id'], movie['title'], movie['genre'], 
@@ -51,28 +50,44 @@ class DatabaseManager:
                 
                 # Update showtimes
                 for showtime in movie['showtimes']:
-                    db.execute("""
+                    conn.execute("""
                         INSERT OR REPLACE INTO showtimes (movie_id, cinema_id, date, time, booking_link)
                         VALUES (?, ?, ?, ?, ?)
                     """, (movie['id'], cinema_id, showtime['date'], 
                          showtime['time'], showtime['booking_link']))
 
     async def get_all_movies(self):
-        with self.SessionLocal() as db:
-            cursor = db.execute("""
-                SELECT m.*, GROUP_CONCAT(DISTINCT c.name) as cinemas
-                FROM movies m
-                LEFT JOIN showtimes s ON m.id = s.movie_id
-                LEFT JOIN cinemas c ON s.cinema_id = c.id
-                GROUP BY m.id
-                ORDER BY m.title
-            """)
-            columns = [col[0] for col in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                print(f"Connected to database at {self.db_path}")  # Debug log
+                cursor = conn.execute("""
+                    SELECT DISTINCT 
+                        m.id,
+                        m.title,
+                        m.genre,
+                        m.duration,
+                        m.language,
+                        m.poster_url,
+                        GROUP_CONCAT(DISTINCT c.name) as cinemas
+                    FROM movies m
+                    LEFT JOIN showtimes s ON m.id = s.movie_id
+                    LEFT JOIN cinemas c ON s.cinema_id = c.id
+                    GROUP BY m.id, m.title, m.genre, m.duration, m.language, m.poster_url
+                    ORDER BY m.title
+                """)
+                
+                columns = [col[0] for col in cursor.description]
+                movies = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                print(f"Found {len(movies)} movies in database")  # Debug log
+                return movies
+                
+        except Exception as e:
+            print(f"Database error in get_all_movies: {str(e)}")  # Debug log
+            raise Exception(f"Database error: {str(e)}")
 
     async def get_movie_showtimes(self, movie_id: str):
-        with self.SessionLocal() as db:
-            cursor = db.execute("""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
                 SELECT s.*, c.name as cinema_name
                 FROM showtimes s
                 JOIN cinemas c ON s.cinema_id = c.id
@@ -94,8 +109,8 @@ class DatabaseManager:
         return None
 
     async def get_all_cinemas(self):
-        with self.SessionLocal() as db:
-            cursor = db.execute("""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
                 SELECT id, name, cinema_chain, latitude, longitude, website, icon_url
                 FROM cinemas
                 ORDER BY name
@@ -104,8 +119,8 @@ class DatabaseManager:
                     for row in cursor.fetchall()]
 
     async def get_cinema_by_id(self, cinema_id: str):
-        with self.SessionLocal() as db:
-            cursor = db.execute("""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
                 SELECT id, name, cinema_chain, latitude, longitude, website
                 FROM cinemas
                 WHERE id = ?
@@ -116,8 +131,8 @@ class DatabaseManager:
             return None
 
     async def get_cinema_movies(self, cinema_id: str):
-        with self.SessionLocal() as db:
-            cursor = db.execute("""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
                 SELECT DISTINCT m.id, m.title,
                        GROUP_CONCAT(s.time) as times
                 FROM movies m
@@ -134,8 +149,8 @@ class DatabaseManager:
 
     async def create_user(self, user_data: dict):
         try:
-            with self.SessionLocal() as db:
-                db.execute("""
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("""
                     INSERT INTO users (
                         email, password, nome, cognome, 
                         citta, cap, data_nascita, telefono,
@@ -152,11 +167,11 @@ class DatabaseManager:
                     user_data["telefono"],
                     False  # email_verified default value
                 ))
-                db.commit()
+                conn.commit()
                 
                 # Get the created user data
-                user_id = db.lastrowid
-                cursor = db.execute("""
+                user_id = cursor.lastrowid
+                cursor = conn.execute("""
                     SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
                     FROM users WHERE id = ?
                 """, (user_id,))
@@ -180,9 +195,9 @@ class DatabaseManager:
 
     async def get_user_by_email(self, email: str) -> Optional[dict]:
         try:
-            with self.SessionLocal() as db:
+            with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                cursor = db.execute("""
+                cursor = conn.execute("""
                     SELECT * FROM users WHERE email = ?
                 """, (email,))
                 user = cursor.fetchone()
@@ -193,9 +208,9 @@ class DatabaseManager:
 
     async def get_all_users(self) -> List[dict]:
         try:
-            with self.SessionLocal() as db:
+            with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                cursor = db.execute("""
+                cursor = conn.execute("""
                     SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
                     FROM users
                 """)
@@ -207,9 +222,9 @@ class DatabaseManager:
 
     async def get_user_by_id(self, user_id: int) -> Optional[dict]:
         try:
-            with self.SessionLocal() as db:
+            with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                cursor = db.execute("""
+                cursor = conn.execute("""
                     SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
                     FROM users WHERE id = ?
                 """, (user_id,))
@@ -221,8 +236,8 @@ class DatabaseManager:
 
     async def update_user(self, user_id: int, user_data: dict) -> Optional[dict]:
         try:
-            with self.SessionLocal() as db:
-                db.execute("""
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
                     UPDATE users 
                     SET nome = ?, cognome = ?, citta = ?, cap = ?, telefono = ?
                     WHERE id = ?
@@ -234,7 +249,7 @@ class DatabaseManager:
                     user_data["telefono"],
                     user_id
                 ))
-                db.commit()
+                conn.commit()
                 return await self.get_user_by_id(user_id)
         except Exception as e:
             print(f"Database error: {str(e)}")
@@ -242,9 +257,9 @@ class DatabaseManager:
 
     async def get_user_movie_history(self, user_id: int) -> List[dict]:
         try:
-            with self.SessionLocal() as db:
+            with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                cursor = db.execute("""
+                cursor = conn.execute("""
                     SELECT m.id, m.title, w.watch_date, c.name as cinema
                     FROM movie_watches w
                     JOIN movies m ON w.movie_id = m.id
@@ -269,11 +284,11 @@ class DatabaseManager:
 
     async def update_user_password(self, user_id: int, hashed_password: str):
         try:
-            with self.SessionLocal() as db:
-                cursor = db.cursor()
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
                 query = "UPDATE users SET password = ? WHERE id = ?"
                 cursor.execute(query, (hashed_password, user_id))
-                db.commit()
+                conn.commit()
                 return True
         except Exception as e:
             print(f"Error updating password: {str(e)}")
@@ -281,21 +296,21 @@ class DatabaseManager:
 
     async def delete_user(self, user_id: int):
         try:
-            with self.SessionLocal() as db:
+            with sqlite3.connect(self.db_path) as conn:
                 # First delete related records
                 # conn.execute("DELETE FROM movie_watches WHERE user_id = ?", (user_id,))
                 
                 # Then delete the user
-                cursor = db.execute("DELETE FROM users WHERE id = ?", (user_id,))
-                db.commit()
+                cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
             print(f"Database error in delete_user: {str(e)}")
             raise Exception(f"Database error: {str(e)}")
 
     async def get_cinema(self, cinema_id: str) -> Optional[Dict]:
-        with self.SessionLocal() as db:
-            cursor = db.execute("""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
                 SELECT id, name, cinema_chain, latitude, longitude, website, icon_url
                 FROM cinemas
                 WHERE id = ?
@@ -315,8 +330,8 @@ class DatabaseManager:
             return None
 
     async def get_movies_by_cinema(self, cinema_id: str) -> List[Dict]:
-        with self.SessionLocal() as db:
-            cursor = db.execute("""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
                 SELECT DISTINCT 
                     m.id,
                     m.title,
