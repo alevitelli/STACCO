@@ -4,39 +4,62 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 from urllib.parse import urlparse
 from typing import List, Dict, Optional
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 class DatabaseManager:
     def __init__(self):
         # Get database URL from environment
-        database_url = os.getenv('DATABASE_URL')
+        database_url = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
         
-        if database_url:
-            # Parse the DATABASE_URL
-            result = urlparse(database_url)
-            self.db_config = {
-                'dbname': result.path[1:],  # Remove leading slash
-                'user': result.username,
-                'password': result.password,
-                'host': result.hostname,
-                'port': result.port
-            }
-        else:
-            # Use individual connection parameters as fallback
-            self.db_config = {
-                'dbname': os.getenv('POSTGRES_DB'),
-                'user': os.getenv('POSTGRES_USER'),
-                'password': os.getenv('POSTGRES_PASSWORD'),
-                'host': os.getenv('POSTGRES_HOST'),
-                'port': os.getenv('POSTGRES_PORT', '5432')
-            }
+        logger.info(f"Initializing DatabaseManager with URL type: {'Railway' if database_url else 'Individual params'}")
         
-        print(f"Connecting to database at {self.db_config['host']}:{self.db_config['port']}...")
-        self._ensure_db_exists()
+        try:
+            if database_url:
+                # Parse the DATABASE_URL
+                result = urlparse(database_url)
+                self.db_config = {
+                    'dbname': result.path[1:],
+                    'user': result.username,
+                    'password': result.password,
+                    'host': result.hostname,
+                    'port': result.port or 5432
+                }
+            else:
+                # Use individual connection parameters as fallback
+                self.db_config = {
+                    'dbname': os.getenv('POSTGRES_DB', 'railway'),
+                    'user': os.getenv('POSTGRES_USER'),
+                    'password': os.getenv('POSTGRES_PASSWORD'),
+                    'host': os.getenv('POSTGRES_HOST'),
+                    'port': int(os.getenv('POSTGRES_PORT', '5432'))
+                }
+
+            # Log connection details (excluding sensitive info)
+            logger.info(f"Connecting to database at {self.db_config['host']}:{self.db_config['port']}")
+            
+            # Test connection
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('SELECT 1')
+                    logger.info("Database connection test successful")
+                    
+        except Exception as e:
+            logger.error(f"Error initializing database connection: {str(e)}")
+            # Re-raise the exception to handle it at a higher level
+            raise
 
     def _get_connection(self):
-        return psycopg2.connect(**self.db_config)
+        try:
+            return psycopg2.connect(**self.db_config)
+        except Exception as e:
+            logger.error(f"Error connecting to database: {str(e)}")
+            raise
 
     def _ensure_db_exists(self):
         """Create tables if they don't exist"""
@@ -117,13 +140,17 @@ class DatabaseManager:
             conn.commit()
 
     async def get_all_movies(self):
-        with self._get_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT * FROM movies
-                    ORDER BY title
-                """)
-                return cur.fetchall()
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT * FROM movies
+                        ORDER BY title
+                    """)
+                    return cur.fetchall()
+        except Exception as e:
+            logger.error(f"Error in get_all_movies: {str(e)}")
+            raise
 
     async def get_movie_showtimes(self, movie_id: str):
         with self._get_connection() as conn:

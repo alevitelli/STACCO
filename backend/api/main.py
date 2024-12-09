@@ -667,3 +667,27 @@ async def get_debug_data():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/api/debug/config")
+async def get_config():
+    """Debug endpoint to check database configuration"""
+    try:
+        # Create a safe version of the config (without sensitive data)
+        safe_config = {
+            'host': db.db_config['host'],
+            'port': db.db_config['port'],
+            'dbname': db.db_config['dbname'],
+            'user': db.db_config['user'],
+            'has_password': bool(db.db_config.get('password')),
+            'env_vars': {
+                'DATABASE_URL': bool(os.getenv('DATABASE_URL')),
+                'POSTGRES_DB': bool(os.getenv('POSTGRES_DB')),
+                'POSTGRES_USER': bool(os.getenv('POSTGRES_USER')),
+                'POSTGRES_PASSWORD': bool(os.getenv('POSTGRES_PASSWORD')),
+                'POSTGRES_HOST': bool(os.getenv('POSTGRES_HOST')),
+                'POSTGRES_PORT': bool(os.getenv('POSTGRES_PORT'))
+            }
+        }
+        return safe_config
+    except Exception as e:
+        return {"error": str(e)}
