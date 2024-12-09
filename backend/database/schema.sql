@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS cinemas (
-    id TEXT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     cinema_chain TEXT NOT NULL,
     latitude REAL,
@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS cinemas (
 );
 
 CREATE TABLE IF NOT EXISTS movies (
-    id TEXT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
     genre TEXT,
     duration INTEGER,
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS movies (
 );
 
 CREATE TABLE IF NOT EXISTS showtimes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     movie_id TEXT,
     cinema_id TEXT,
     date TEXT NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS showtimes (
 );
 
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     nome TEXT NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS movie_watches (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     movie_id TEXT NOT NULL,
     cinema_id TEXT NOT NULL,

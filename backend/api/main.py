@@ -39,10 +39,11 @@ app.add_middleware(
 UPLOAD_DIR = Path("uploads/profile_pictures")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-EMAIL_HOST = "smtp.gmail.com"
-EMAIL_PORT = 587
-EMAIL_HOST_USER = "alessandro.stacco.test@gmail.com"
-EMAIL_HOST_PASSWORD = "hobk ijne oiqu cipp"  # You'll need to generate this
+
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 
 class UserRegister(BaseModel):
     email: str
