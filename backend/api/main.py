@@ -19,29 +19,37 @@ from psycopg2.extras import RealDictCursor
 
 load_dotenv()
 
-app = FastAPI()
+port = int(os.getenv("PORT", 8000))
+host = "0.0.0.0"  # Required for Railway
+
+app = FastAPI(
+    title="Stacco API",
+    description="API for Stacco movie application",
+    version="1.0.0"
+)
 db = DatabaseManager()
 
 # Password hashing configuration
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# CORS configuration
+# CORS configuration for Railway deployment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://stacco.vercel.app"
+        "https://stacco.vercel.app",
+        # Add any other frontend URLs you need
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Add these configurations at the top of your file
+# Upload directory configuration
 UPLOAD_DIR = Path("uploads/profile_pictures")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-
+# Email configuration
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
@@ -666,28 +674,21 @@ async def get_debug_data():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    """
+    Health check endpoint for Railway to verify the application is running
+    """
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "environment": "production" if os.getenv("RAILWAY_ENVIRONMENT") else "development"
+    }
 
-@app.get("/api/debug/config")
-async def get_config():
-    """Debug endpoint to check database configuration"""
-    try:
-        # Create a safe version of the config (without sensitive data)
-        safe_config = {
-            'host': db.db_config['host'],
-            'port': db.db_config['port'],
-            'dbname': db.db_config['dbname'],
-            'user': db.db_config['user'],
-            'has_password': bool(db.db_config.get('password')),
-            'env_vars': {
-                'DATABASE_URL': bool(os.getenv('DATABASE_URL')),
-                'POSTGRES_DB': bool(os.getenv('POSTGRES_DB')),
-                'POSTGRES_USER': bool(os.getenv('POSTGRES_USER')),
-                'POSTGRES_PASSWORD': bool(os.getenv('POSTGRES_PASSWORD')),
-                'POSTGRES_HOST': bool(os.getenv('POSTGRES_HOST')),
-                'POSTGRES_PORT': bool(os.getenv('POSTGRES_PORT'))
-            }
-        }
-        return safe_config
-    except Exception as e:
-        return {"error": str(e)}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "api.main:app",
+        host=host,
+        port=port,
+        reload=False  # Disable reload in production
+    )
