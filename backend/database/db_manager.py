@@ -2,20 +2,37 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 from typing import List, Dict, Optional
 
 load_dotenv()
 
 class DatabaseManager:
     def __init__(self):
-        # Get PostgreSQL connection details from environment variables
-        self.db_config = {
-            'dbname': os.getenv('PGDATABASE'),
-            'user': os.getenv('PGUSER'),
-            'password': os.getenv('PGPASSWORD'),
-            'host': os.getenv('PGHOST'),
-            'port': os.getenv('PGPORT', '5432')
-        }
+        # Get database URL from environment
+        database_url = os.getenv('DATABASE_URL')
+        
+        if database_url:
+            # Parse the DATABASE_URL
+            result = urlparse(database_url)
+            self.db_config = {
+                'dbname': result.path[1:],  # Remove leading slash
+                'user': result.username,
+                'password': result.password,
+                'host': result.hostname,
+                'port': result.port
+            }
+        else:
+            # Use individual connection parameters as fallback
+            self.db_config = {
+                'dbname': os.getenv('POSTGRES_DB'),
+                'user': os.getenv('POSTGRES_USER'),
+                'password': os.getenv('POSTGRES_PASSWORD'),
+                'host': os.getenv('POSTGRES_HOST'),
+                'port': os.getenv('POSTGRES_PORT', '5432')
+            }
+        
+        print(f"Connecting to database at {self.db_config['host']}:{self.db_config['port']}...")
         self._ensure_db_exists()
 
     def _get_connection(self):
@@ -100,45 +117,25 @@ class DatabaseManager:
             conn.commit()
 
     async def get_all_movies(self):
-        try:
-            with self._get_connection() as conn:
-                print(f"Connected to database at {self.db_path}")  # Debug log
-                cursor = conn.execute("""
-                    SELECT DISTINCT 
-                        m.id,
-                        m.title,
-                        m.genre,
-                        m.duration,
-                        m.language,
-                        m.poster_url,
-                        GROUP_CONCAT(DISTINCT c.name) as cinemas
-                    FROM movies m
-                    LEFT JOIN showtimes s ON m.id = s.movie_id
-                    LEFT JOIN cinemas c ON s.cinema_id = c.id
-                    GROUP BY m.id, m.title, m.genre, m.duration, m.language, m.poster_url
-                    ORDER BY m.title
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT * FROM movies
+                    ORDER BY title
                 """)
-                
-                columns = [col[0] for col in cursor.description]
-                movies = [dict(zip(columns, row)) for row in cursor.fetchall()]
-                print(f"Found {len(movies)} movies in database")  # Debug log
-                return movies
-                
-        except Exception as e:
-            print(f"Database error in get_all_movies: {str(e)}")  # Debug log
-            raise Exception(f"Database error: {str(e)}")
+                return cur.fetchall()
 
     async def get_movie_showtimes(self, movie_id: str):
         with self._get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT s.*, c.name as cinema_name
-                FROM showtimes s
-                JOIN cinemas c ON s.cinema_id = c.id
-                WHERE s.movie_id = ?
-                ORDER BY s.date, s.time
-            """, (movie_id,))
-            return [dict(zip([col[0] for col in cursor.description], row)) 
-                    for row in cursor.fetchall()]
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT s.*, c.name as cinema_name 
+                    FROM showtimes s
+                    JOIN cinemas c ON s.cinema_id = c.id
+                    WHERE s.movie_id = %s
+                    ORDER BY s.date, s.time
+                """, (movie_id,))
+                return cur.fetchall()
 
     async def get_movie_by_id(self, movie_id: str):
         # Get all movies first
@@ -153,13 +150,12 @@ class DatabaseManager:
 
     async def get_all_cinemas(self):
         with self._get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT id, name, cinema_chain, latitude, longitude, website, icon_url
-                FROM cinemas
-                ORDER BY name
-            """)
-            return [dict(zip([col[0] for col in cursor.description], row)) 
-                    for row in cursor.fetchall()]
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT * FROM cinemas
+                    ORDER BY name
+                """)
+                return cur.fetchall()
 
     async def get_cinema_by_id(self, cinema_id: str):
         with self._get_connection() as conn:
@@ -175,20 +171,15 @@ class DatabaseManager:
 
     async def get_cinema_movies(self, cinema_id: str):
         with self._get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT DISTINCT m.id, m.title,
-                       GROUP_CONCAT(s.time) as times
-                FROM movies m
-                JOIN showtimes s ON m.id = s.movie_id
-                WHERE s.cinema_id = ? AND s.date = strftime('%d-%m-%Y',DATE('now'))
-                GROUP BY m.id
-            """, (cinema_id,))
-            movies = []
-            for row in cursor.fetchall():
-                movie = dict(zip([col[0] for col in cursor.description], row))
-                movie['times'] = movie['times'].split(',') if movie['times'] else []
-                movies.append(movie)
-            return movies
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT DISTINCT m.* 
+                    FROM movies m
+                    JOIN showtimes s ON m.id = s.movie_id
+                    WHERE s.cinema_id = %s
+                    ORDER BY m.title
+                """, (cinema_id,))
+                return cur.fetchall()
 
     async def create_user(self, user_data: dict):
         try:
@@ -353,64 +344,24 @@ class DatabaseManager:
 
     async def get_cinema(self, cinema_id: str) -> Optional[Dict]:
         with self._get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT id, name, cinema_chain, latitude, longitude, website, icon_url
-                FROM cinemas
-                WHERE id = ?
-            """, (cinema_id,))
-            row = cursor.fetchone()
-            
-            if row:
-                return {
-                    'id': row[0],
-                    'name': row[1],
-                    'cinema_chain': row[2],
-                    'latitude': row[3],
-                    'longitude': row[4],
-                    'website': row[5],
-                    'icon_url': row[6]
-                }
-            return None
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM cinemas WHERE id = %s", (cinema_id,))
+                return cur.fetchone()
 
     async def get_movies_by_cinema(self, cinema_id: str) -> List[Dict]:
         with self._get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT DISTINCT 
-                    m.id,
-                    m.title,
-                    m.genre,
-                    m.duration,
-                    m.language,
-                    m.poster_url,
-                    GROUP_CONCAT(s.date || ',' || s.time || ',' || s.booking_link) as showtimes
-                FROM movies m
-                JOIN showtimes s ON m.id = s.movie_id
-                WHERE s.cinema_id = ?
-                GROUP BY m.id
-            """, (cinema_id,))
-            
-            movies = []
-            for row in cursor.fetchall():
-                showtimes_data = row[6].split(',') if row[6] else []
-                showtimes = []
-                
-                # Process showtimes in groups of 3 (date, time, booking_link)
-                for i in range(0, len(showtimes_data), 3):
-                    if i + 2 < len(showtimes_data):
-                        showtimes.append({
-                            'date': showtimes_data[i],
-                            'time': showtimes_data[i + 1],
-                            'booking_link': showtimes_data[i + 2]
-                        })
-                
-                movies.append({
-                    'id': row[0],
-                    'title': row[1],
-                    'genre': row[2],
-                    'duration': row[3],
-                    'language': row[4],
-                    'poster_url': row[5],
-                    'showtimes': showtimes
-                })
-                
-            return movies
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT DISTINCT m.*, 
+                           array_agg(json_build_object(
+                               'date', s.date,
+                               'time', s.time,
+                               'booking_link', s.booking_link
+                           )) as showtimes
+                    FROM movies m
+                    JOIN showtimes s ON m.id = s.movie_id
+                    WHERE s.cinema_id = %s
+                    GROUP BY m.id
+                    ORDER BY m.title
+                """, (cinema_id,))
+                return cur.fetchall()

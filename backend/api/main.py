@@ -74,15 +74,11 @@ class UserResponse(BaseModel):
 @app.get("/api/movies")
 async def get_movies():
     try:
-        print("Fetching movies from database...")  # Debug log
         movies = await db.get_all_movies()
-        print(f"Found {len(movies)} movies")  # Debug log
         
-        # Add real showtimes to each movie
+        # Add showtimes to each movie
         for movie in movies:
-            print(f"Fetching showtimes for movie: {movie['id']}")  # Debug log
             showtimes = await db.get_movie_showtimes(movie["id"])
-            print(f"Found {len(showtimes)} showtimes")  # Debug log
             movie["showtimes"] = [{
                 "date": showtime["date"],
                 "time": showtime["time"],
@@ -92,8 +88,8 @@ async def get_movies():
         
         return movies
     except Exception as e:
-        print(f"Error in get_movies: {str(e)}")  # Debug log
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in get_movies: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/api/movies/{movie_id}")
 async def get_movie(movie_id: str):
@@ -118,14 +114,18 @@ async def get_movie(movie_id: str):
 
 @app.get("/api/cinemas")
 async def get_cinemas():
-    cinemas = await db.get_all_cinemas()
-    
-    # Add current movies to each cinema
-    for cinema in cinemas:
-        movies = await db.get_cinema_movies(cinema["id"])
-        cinema["currentMovies"] = movies
-    
-    return cinemas
+    try:
+        cinemas = await db.get_all_cinemas()
+        
+        # Add current movies to each cinema
+        for cinema in cinemas:
+            movies = await db.get_cinema_movies(cinema["id"])
+            cinema["currentMovies"] = movies
+        
+        return cinemas
+    except Exception as e:
+        print(f"Error in get_cinemas: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/api/cinemas/{cinema_id}", response_model=Cinema)
 async def get_cinema(cinema_id: str):
@@ -621,3 +621,45 @@ async def test_db_connection():
             "status": "error",
             "message": str(e)
         }
+
+@app.get("/api/debug/data")
+async def get_debug_data():
+    try:
+        with db._get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get cinemas count
+                cur.execute("SELECT COUNT(*) as cinema_count FROM cinemas")
+                cinema_count = cur.fetchone()['cinema_count']
+                
+                # Get movies count
+                cur.execute("SELECT COUNT(*) as movie_count FROM movies")
+                movie_count = cur.fetchone()['movie_count']
+                
+                # Get showtimes count
+                cur.execute("SELECT COUNT(*) as showtime_count FROM showtimes")
+                showtime_count = cur.fetchone()['showtime_count']
+                
+                # Get sample data
+                cur.execute("SELECT * FROM cinemas LIMIT 2")
+                sample_cinemas = cur.fetchall()
+                
+                cur.execute("SELECT * FROM movies LIMIT 2")
+                sample_movies = cur.fetchall()
+                
+                cur.execute("SELECT * FROM showtimes LIMIT 2")
+                sample_showtimes = cur.fetchall()
+                
+                return {
+                    "counts": {
+                        "cinemas": cinema_count,
+                        "movies": movie_count,
+                        "showtimes": showtime_count
+                    },
+                    "samples": {
+                        "cinemas": sample_cinemas,
+                        "movies": sample_movies,
+                        "showtimes": sample_showtimes
+                    }
+                }
+    except Exception as e:
+        return {"error": str(e)}

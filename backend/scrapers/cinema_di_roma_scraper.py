@@ -4,7 +4,10 @@ from typing import List, Dict
 from backend.scrapers.base_scraper import BaseScraper
 import re
 from urllib.parse import urljoin
-from backend.database.db_manager import DatabaseManager
+from database.db_manager import DatabaseManager
+import asyncio
+from aiohttp import ClientTimeout
+from aiohttp.client_exceptions import ClientError
 
 class CinemaDiRomaScraper(BaseScraper):
     def __init__(self):
@@ -14,12 +17,32 @@ class CinemaDiRomaScraper(BaseScraper):
         self.cinemas = {}  # Will be populated dynamically
         self.session = None
         self.db = DatabaseManager()
+        # Add timeout settings
+        self.timeout = ClientTimeout(total=30, connect=10)
+        self.max_retries = 3
+        self.retry_delay = 2
 
     async def _get_session(self):
-        """Get or create an aiohttp session"""
+        """Get or create an aiohttp session with timeout"""
         if self.session is None:
-            self.session = aiohttp.ClientSession()
+            self.session = aiohttp.ClientSession(timeout=self.timeout)
         return self.session
+
+    async def _make_request(self, url: str, retry_count: int = 0) -> str:
+        """Make HTTP request with retry logic"""
+        try:
+            session = await self._get_session()
+            async with session.get(url) as response:
+                if response.status == 200:
+                    return await response.text()
+                else:
+                    raise aiohttp.ClientError(f"HTTP {response.status}")
+        except Exception as e:
+            if retry_count < self.max_retries:
+                print(f"Request failed, retrying in {self.retry_delay} seconds... ({retry_count + 1}/{self.max_retries})")
+                await asyncio.sleep(self.retry_delay)
+                return await self._make_request(url, retry_count + 1)
+            raise Exception(f"Failed after {self.max_retries} retries: {str(e)}")
 
     async def _initialize_cinemas(self):
         """Fetch cinema URLs and icons from the main page"""
@@ -75,36 +98,43 @@ class CinemaDiRomaScraper(BaseScraper):
 
     async def get_cinemas(self) -> List[Dict]:
         """Get all cinemas from Cinema di Roma chain"""
-        await self._initialize_cinemas()
-        
-        cinemas_data = []
-        
-        # Cinema coordinates
-        cinema_locations = {
-            'intrastevere': {'lat': 41.8891, 'lon': 12.4697},
-            'lux': {'lat': 41.8819, 'lon': 12.4987},
-            'odeon': {'lat': 41.9009, 'lon': 12.4833},
-            'tibur': {'lat': 41.8937, 'lon': 12.5240}
-        }
+        try:
+            await self._initialize_cinemas()
+            cinemas_data = []
+            
+            # Cinema coordinates
+            cinema_locations = {
+                'intrastevere': {'lat': 41.8891, 'lon': 12.4697},
+                'lux': {'lat': 41.8819, 'lon': 12.4987},
+                'odeon': {'lat': 41.9009, 'lon': 12.4833},
+                'tibur': {'lat': 41.8937, 'lon': 12.5240}
+            }
 
-        for cinema_id, cinema_info in self.cinemas.items():
+            for cinema_id, cinema_info in self.cinemas.items():
+                try:
+                    cinema_data = {
+                        'id': cinema_id,
+                        'name': cinema_info['name'],
+                        'cinema_chain': self.cinema_chain_name,
+                        'latitude': cinema_locations[cinema_id]['lat'],
+                        'longitude': cinema_locations[cinema_id]['lon'],
+                        'website': f"{self.base_url}/{cinema_info['url_path']}",
+                        'icon_url': cinema_info['icon_url']
+                    }
+                    cinemas_data.append(cinema_data)
+                except Exception as e:
+                    print(f"Error fetching cinema {cinema_info['name']}: {str(e)}")
+
+            # Save to database with error handling
             try:
-                cinema_data = {
-                    'id': cinema_id,
-                    'name': cinema_info['name'],
-                    'cinema_chain': self.cinema_chain_name,
-                    'latitude': cinema_locations[cinema_id]['lat'],
-                    'longitude': cinema_locations[cinema_id]['lon'],
-                    'website': f"{self.base_url}/{cinema_info['url_path']}",
-                    'icon_url': cinema_info['icon_url']
-                }
-                cinemas_data.append(cinema_data)
+                await self.db.update_cinemas(cinemas_data)
             except Exception as e:
-                print(f"Error fetching cinema {cinema_info['name']}: {str(e)}")
-
-        # Save to database
-        await self.db.update_cinemas(cinemas_data)
-        return cinemas_data
+                print(f"Error saving cinemas to database: {str(e)}")
+            
+            return cinemas_data
+        except Exception as e:
+            print(f"Error fetching cinemas: {str(e)}")
+            return []
 
     async def get_showtimes(self, cinema_id: str) -> List[Dict]:
         """Get showtimes for a specific cinema"""
@@ -117,12 +147,8 @@ class CinemaDiRomaScraper(BaseScraper):
         url = f"{self.base_url}/{self.cinemas[cinema_id]['url_path']}"
         print(f"Fetching showtimes from: {url}\n")
         
-        session = await self._get_session()
-        async with session.get(url) as response:
-            if response.status != 200:
-                return []
-            
-            html = await response.text()
+        try:
+            html = await self._make_request(url)
             soup = BeautifulSoup(html, 'html.parser')
             movies_dict = {}
             
@@ -208,7 +234,14 @@ class CinemaDiRomaScraper(BaseScraper):
             movies = sorted(movies_dict.values(), key=lambda x: x['title'])
             if movies:
                 await self.db.update_movies_and_showtimes(cinema_id, movies)
+            # Add delay between requests to avoid overwhelming the server
+            await asyncio.sleep(1)
+            
             return movies
+
+        except Exception as e:
+            print(f"Error fetching showtimes for {cinema_id}: {str(e)}")
+            return []
 
     async def get_movie_details(self, movie_id: str) -> Dict:
         """Get detailed information about a specific movie"""
