@@ -1,64 +1,107 @@
-import sqlite3
 import os
-from datetime import datetime
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 from typing import List, Dict, Optional
 
+load_dotenv()
+
 class DatabaseManager:
-    def __init__(self, db_path="database/cinema.db"):
-        self.db_path = db_path
+    def __init__(self):
+        # Get PostgreSQL connection details from environment variables
+        self.db_config = {
+            'dbname': os.getenv('PGDATABASE'),
+            'user': os.getenv('PGUSER'),
+            'password': os.getenv('PGPASSWORD'),
+            'host': os.getenv('PGHOST'),
+            'port': os.getenv('PGPORT', '5432')
+        }
         self._ensure_db_exists()
 
-    def _ensure_db_exists(self):
-        if not os.path.exists(os.path.dirname(self.db_path)):
-            os.makedirs(os.path.dirname(self.db_path))
-        
-        if not os.path.exists(self.db_path):
-            self._init_db()
+    def _get_connection(self):
+        return psycopg2.connect(**self.db_config)
 
-    def _init_db(self):
-        with open('database/schema.sql') as f:
-            schema = f.read()
-        with sqlite3.connect(self.db_path) as conn:
-            conn.executescript(schema)
+    def _ensure_db_exists(self):
+        """Create tables if they don't exist"""
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                with open(os.path.join(os.path.dirname(__file__), 'schema.sql'), 'r') as f:
+                    cur.execute(f.read())
+            conn.commit()
 
     async def update_cinemas(self, cinemas: List[Dict]):
-        with sqlite3.connect(self.db_path) as conn:
-            for cinema in cinemas:
-                conn.execute("""
-                    INSERT OR REPLACE INTO cinemas 
-                    (id, name, cinema_chain, latitude, longitude, website, icon_url)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    cinema['id'], 
-                    cinema['name'], 
-                    cinema['cinema_chain'],
-                    cinema['latitude'], 
-                    cinema['longitude'], 
-                    cinema['website'],
-                    cinema.get('icon_url', '')  # Use get() to handle missing icons
-                ))
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                for cinema in cinemas:
+                    cur.execute("""
+                        INSERT INTO cinemas 
+                        (id, name, cinema_chain, latitude, longitude, website, icon_url)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (id) DO UPDATE SET
+                            name = EXCLUDED.name,
+                            cinema_chain = EXCLUDED.cinema_chain,
+                            latitude = EXCLUDED.latitude,
+                            longitude = EXCLUDED.longitude,
+                            website = EXCLUDED.website,
+                            icon_url = EXCLUDED.icon_url,
+                            last_updated = CURRENT_TIMESTAMP
+                    """, (
+                        cinema['id'],
+                        cinema['name'],
+                        cinema['cinema_chain'],
+                        cinema['latitude'],
+                        cinema['longitude'],
+                        cinema['website'],
+                        cinema.get('icon_url', '')
+                    ))
+            conn.commit()
 
     async def update_movies_and_showtimes(self, cinema_id: str, movies: List[Dict]):
-        with sqlite3.connect(self.db_path) as conn:
-            for movie in movies:
-                # Update movie info
-                conn.execute("""
-                    INSERT OR REPLACE INTO movies (id, title, genre, duration, language, poster_url)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (movie['id'], movie['title'], movie['genre'], 
-                     movie['duration'], movie['language'], movie['poster_url']))
-                
-                # Update showtimes
-                for showtime in movie['showtimes']:
-                    conn.execute("""
-                        INSERT OR REPLACE INTO showtimes (movie_id, cinema_id, date, time, booking_link)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (movie['id'], cinema_id, showtime['date'], 
-                         showtime['time'], showtime['booking_link']))
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                for movie in movies:
+                    # Insert/update movie
+                    cur.execute("""
+                        INSERT INTO movies 
+                        (id, title, genre, duration, language, poster_url)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (id) DO UPDATE SET
+                            title = EXCLUDED.title,
+                            genre = EXCLUDED.genre,
+                            duration = EXCLUDED.duration,
+                            language = EXCLUDED.language,
+                            poster_url = EXCLUDED.poster_url,
+                            last_updated = CURRENT_TIMESTAMP
+                    """, (
+                        movie['id'],
+                        movie['title'],
+                        movie['genre'],
+                        movie['duration'],
+                        movie['language'],
+                        movie['poster_url']
+                    ))
+
+                    # Insert showtimes
+                    for showtime in movie['showtimes']:
+                        cur.execute("""
+                            INSERT INTO showtimes 
+                            (movie_id, cinema_id, date, time, booking_link)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (movie_id, cinema_id, date, time) DO UPDATE SET
+                                booking_link = EXCLUDED.booking_link,
+                                last_updated = CURRENT_TIMESTAMP
+                        """, (
+                            movie['id'],
+                            cinema_id,
+                            showtime['date'],
+                            showtime['time'],
+                            showtime['booking_link']
+                        ))
+            conn.commit()
 
     async def get_all_movies(self):
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 print(f"Connected to database at {self.db_path}")  # Debug log
                 cursor = conn.execute("""
                     SELECT DISTINCT 
@@ -86,7 +129,7 @@ class DatabaseManager:
             raise Exception(f"Database error: {str(e)}")
 
     async def get_movie_showtimes(self, movie_id: str):
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.execute("""
                 SELECT s.*, c.name as cinema_name
                 FROM showtimes s
@@ -109,7 +152,7 @@ class DatabaseManager:
         return None
 
     async def get_all_cinemas(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.execute("""
                 SELECT id, name, cinema_chain, latitude, longitude, website, icon_url
                 FROM cinemas
@@ -119,7 +162,7 @@ class DatabaseManager:
                     for row in cursor.fetchall()]
 
     async def get_cinema_by_id(self, cinema_id: str):
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.execute("""
                 SELECT id, name, cinema_chain, latitude, longitude, website
                 FROM cinemas
@@ -131,7 +174,7 @@ class DatabaseManager:
             return None
 
     async def get_cinema_movies(self, cinema_id: str):
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.execute("""
                 SELECT DISTINCT m.id, m.title,
                        GROUP_CONCAT(s.time) as times
@@ -149,7 +192,7 @@ class DatabaseManager:
 
     async def create_user(self, user_data: dict):
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.execute("""
                     INSERT INTO users (
                         email, password, nome, cognome, 
@@ -195,7 +238,7 @@ class DatabaseManager:
 
     async def get_user_by_email(self, email: str) -> Optional[dict]:
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute("""
                     SELECT * FROM users WHERE email = ?
@@ -208,7 +251,7 @@ class DatabaseManager:
 
     async def get_all_users(self) -> List[dict]:
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute("""
                     SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
@@ -222,7 +265,7 @@ class DatabaseManager:
 
     async def get_user_by_id(self, user_id: int) -> Optional[dict]:
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute("""
                     SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
@@ -236,7 +279,7 @@ class DatabaseManager:
 
     async def update_user(self, user_id: int, user_data: dict) -> Optional[dict]:
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 conn.execute("""
                     UPDATE users 
                     SET nome = ?, cognome = ?, citta = ?, cap = ?, telefono = ?
@@ -257,7 +300,7 @@ class DatabaseManager:
 
     async def get_user_movie_history(self, user_id: int) -> List[dict]:
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute("""
                     SELECT m.id, m.title, w.watch_date, c.name as cinema
@@ -284,7 +327,7 @@ class DatabaseManager:
 
     async def update_user_password(self, user_id: int, hashed_password: str):
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 query = "UPDATE users SET password = ? WHERE id = ?"
                 cursor.execute(query, (hashed_password, user_id))
@@ -296,7 +339,7 @@ class DatabaseManager:
 
     async def delete_user(self, user_id: int):
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 # First delete related records
                 # conn.execute("DELETE FROM movie_watches WHERE user_id = ?", (user_id,))
                 
@@ -309,7 +352,7 @@ class DatabaseManager:
             raise Exception(f"Database error: {str(e)}")
 
     async def get_cinema(self, cinema_id: str) -> Optional[Dict]:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.execute("""
                 SELECT id, name, cinema_chain, latitude, longitude, website, icon_url
                 FROM cinemas
@@ -330,7 +373,7 @@ class DatabaseManager:
             return None
 
     async def get_movies_by_cinema(self, cinema_id: str) -> List[Dict]:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.execute("""
                 SELECT DISTINCT 
                     m.id,

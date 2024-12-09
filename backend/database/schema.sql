@@ -2,8 +2,8 @@ CREATE TABLE IF NOT EXISTS cinemas (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     cinema_chain TEXT NOT NULL,
-    latitude REAL,
-    longitude REAL,
+    latitude FLOAT,
+    longitude FLOAT,
     website TEXT,
     icon_url TEXT,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS movies (
 );
 
 CREATE TABLE IF NOT EXISTS showtimes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     movie_id TEXT,
     cinema_id TEXT,
     date TEXT NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS showtimes (
 );
 
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     nome TEXT NOT NULL,
@@ -43,12 +43,12 @@ CREATE TABLE IF NOT EXISTS users (
     data_nascita DATE NOT NULL,
     telefono TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    profile_picture VARCHAR(255),
+    profile_picture TEXT,
     email_verified BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS movie_watches (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     movie_id TEXT NOT NULL,
     cinema_id TEXT NOT NULL,

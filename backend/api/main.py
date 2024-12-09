@@ -15,6 +15,7 @@ import os
 from jwt.exceptions import PyJWTError
 from dotenv import load_dotenv
 import sqlite3
+from psycopg2.extras import RealDictCursor
 
 load_dotenv()
 
@@ -603,3 +604,20 @@ async def check_db_status():
             }
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/api/debug/db-connection")
+async def test_db_connection():
+    try:
+        with db._get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT version();")
+                version = cur.fetchone()
+                return {
+                    "status": "connected",
+                    "postgres_version": version['version']
+                }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
