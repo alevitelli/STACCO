@@ -617,27 +617,31 @@ async def delete_user(user_id: int):
 @app.get("/api/debug/db-status")
 async def check_db_status():
     try:
-        with sqlite3.connect(db.db_path) as conn:
-            # Check movies table
-            cursor = conn.execute("SELECT COUNT(*) FROM movies")
-            movie_count = cursor.fetchone()[0]
-            
-            # Check cinemas table
-            cursor = conn.execute("SELECT COUNT(*) FROM cinemas")
-            cinema_count = cursor.fetchone()[0]
-            
-            # Check showtimes table
-            cursor = conn.execute("SELECT COUNT(*) FROM showtimes")
-            showtime_count = cursor.fetchone()[0]
-            
-            return {
-                "database_path": db.db_path,
-                "movie_count": movie_count,
-                "cinema_count": cinema_count,
-                "showtime_count": showtime_count
-            }
+        with db._get_connection() as conn:
+            with conn.cursor() as cur:
+                # Check movies table
+                cur.execute("SELECT COUNT(*) as count FROM movies")
+                movie_count = cur.fetchone()[0]
+                
+                # Check cinemas table
+                cur.execute("SELECT COUNT(*) as count FROM cinemas")
+                cinema_count = cur.fetchone()[0]
+                
+                # Check showtimes table
+                cur.execute("SELECT COUNT(*) as count FROM showtimes")
+                showtime_count = cur.fetchone()[0]
+                
+                return {
+                    "database_connection": "successful",
+                    "movie_count": movie_count,
+                    "cinema_count": cinema_count,
+                    "showtime_count": showtime_count
+                }
     except Exception as e:
-        return {"error": str(e)}
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 @app.get("/api/debug/db-connection")
 async def test_db_connection():
@@ -718,9 +722,13 @@ async def startup_event():
             os.getenv("FRONTEND_URL", "")
         ]
         
-        # Ensure database tables exist
-        await db._ensure_db_exists()
-        
+        # Initialize database tables
+        try:
+            await db._ensure_db_exists()
+        except Exception as e:
+            logger.error(f"Database initialization error: {e}")
+            # Don't raise here, allow the application to start even if tables exist
+            
     except Exception as e:
         logger.error(f"Startup error: {e}")
         raise
