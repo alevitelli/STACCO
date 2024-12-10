@@ -20,13 +20,13 @@ COPY . .
 ENV PYTHONPATH=/app
 
 # Add Railway's port as a build argument
-ARG PORT
-ENV PORT=${PORT:-8000}
+ARG PORT=8000
+ENV PORT=${PORT}
 
 # Create an entrypoint script that properly handles the PORT variable
 RUN echo '#!/bin/bash\n\
 cd /app && \
-uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --forwarded-allow-ips "*"' > /app/entrypoint.sh \
+exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips "*"' > /app/entrypoint.sh \
     && chmod +x /app/entrypoint.sh
 
 # Use the entrypoint script
