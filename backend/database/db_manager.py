@@ -197,16 +197,20 @@ class DatabaseManager:
             raise
 
     async def get_movie_showtimes(self, movie_id: str):
-        with self._get_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT s.*, c.name as cinema_name 
-                    FROM showtimes s
-                    JOIN cinemas c ON s.cinema_id = c.id
-                    WHERE s.movie_id = %s
-                    ORDER BY s.date, s.time
-                """, (movie_id,))
-                return cur.fetchall()
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT s.date, s.time, c.name as cinema_name, s.booking_link
+                        FROM showtimes s
+                        JOIN cinemas c ON s.cinema_id = c.id
+                        WHERE s.movie_id = %s
+                        ORDER BY s.date, s.time
+                    """, (movie_id,))
+                    return cur.fetchall()
+        except Exception as e:
+            print(f"Error in get_movie_showtimes: {str(e)}")
+            raise e
 
     async def get_movie_by_id(self, movie_id: str):
         # Get all movies first
@@ -241,16 +245,32 @@ class DatabaseManager:
             return None
 
     async def get_cinema_movies(self, cinema_id: str):
-        with self._get_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT DISTINCT m.* 
-                    FROM movies m
-                    JOIN showtimes s ON m.id = s.movie_id
-                    WHERE s.cinema_id = %s
-                    ORDER BY m.title
-                """, (cinema_id,))
-                return cur.fetchall()
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT DISTINCT m.*,
+                        (
+                            SELECT jsonb_agg(
+                                jsonb_build_object(
+                                    'date', s.date,
+                                    'time', s.time,
+                                    'booking_link', s.booking_link
+                                )
+                            )
+                            FROM showtimes s
+                            WHERE s.movie_id = m.id AND s.cinema_id = %s
+                        ) as showtimes
+                        FROM movies m
+                        JOIN showtimes s ON m.id = s.movie_id
+                        WHERE s.cinema_id = %s
+                    """, (cinema_id, cinema_id))
+                    
+                    movies = cur.fetchall()
+                    return [dict(movie) for movie in movies]
+        except Exception as e:
+            print(f"Error in get_cinema_movies: {str(e)}")
+            raise e
 
     async def create_user(self, user_data: dict):
         try:

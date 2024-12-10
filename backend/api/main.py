@@ -161,7 +161,7 @@ async def get_cinemas():
         print(f"Error in get_cinemas: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-@app.get("/api/cinemas/{cinema_id}", response_model=Cinema)
+@app.get("/api/cinemas/{cinema_id}")
 async def get_cinema(cinema_id: str):
     try:
         # Get the cinema details
@@ -170,13 +170,19 @@ async def get_cinema(cinema_id: str):
             raise HTTPException(status_code=404, detail="Cinema not found")
 
         # Get current movies for this cinema
-        movies = await db.get_movies_by_cinema(cinema_id)
+        movies = await db.get_cinema_movies(cinema_id)
+        
+        # Ensure showtimes is never null
+        for movie in movies:
+            if movie['showtimes'] is None:
+                movie['showtimes'] = []
         
         # Add the movies to the cinema object
         cinema['currentMovies'] = movies
 
         return cinema
     except Exception as e:
+        logger.error(f"Error in get_cinema: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/users/register")

@@ -26,26 +26,46 @@ export default function HomePage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    console.log('Using API URL:', apiUrl); // Debug log
+
     // Add check for logged in status
     const userId = localStorage.getItem('userId')
     setIsLoggedIn(!!userId)
 
-    // Update API calls to use environment variable
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/movies`)
-      .then(res => res.json())
-      .then(data => {
-        console.log('Fetched movies:', data)
-        setFeaturedMovies(data.slice(0, 6))
+    // Fetch movies with error handling
+    fetch(`${apiUrl}/api/movies`)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`Movies API error: ${res.status}`);
+        }
+        return res.json();
       })
-      .catch(error => console.error('Error fetching movies:', error))
-
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cinemas`)
-      .then(res => res.json())
       .then(data => {
-        console.log('Fetched cinemas:', data)
+        console.log('Successfully fetched movies:', data);
+        setFeaturedMovies(data.slice(0, 8))
+      })
+      .catch(error => {
+        console.error('Failed to fetch movies:', error);
+        setFeaturedMovies([]); // Set empty array on error
+      });
+
+    // Fetch cinemas with error handling
+    fetch(`${apiUrl}/api/cinemas`)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`Cinemas API error: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => {
+        console.log('Successfully fetched cinemas:', data);
         setFeaturedCinemas(data.slice(0, 4))
       })
-      .catch(error => console.error('Error fetching cinemas:', error))
+      .catch(error => {
+        console.error('Failed to fetch cinemas:', error);
+        setFeaturedCinemas([]); // Set empty array on error
+      });
   }, [])
 
   const scrollCarousel = (direction: 'left' | 'right') => {
