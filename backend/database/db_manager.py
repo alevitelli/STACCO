@@ -100,13 +100,18 @@ class DatabaseManager:
             logger.error(f"Attempted connection to: {self.db_config['host']}:{self.db_config['port']}")
             raise
 
-    def _ensure_db_exists(self):
+    async def _ensure_db_exists(self):
         """Create tables if they don't exist"""
-        with self._get_connection() as conn:
-            with conn.cursor() as cur:
-                with open(os.path.join(os.path.dirname(__file__), 'schema.sql'), 'r') as f:
-                    cur.execute(f.read())
-            conn.commit()
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    with open(os.path.join(os.path.dirname(__file__), 'schema.sql'), 'r') as f:
+                        cur.execute(f.read())
+                conn.commit()
+            logger.info("Database tables verified/created successfully")
+        except Exception as e:
+            logger.error(f"Error ensuring database exists: {e}")
+            raise
 
     async def update_cinemas(self, cinemas: List[Dict]):
         with self._get_connection() as conn:
