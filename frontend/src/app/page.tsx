@@ -30,21 +30,22 @@ export default function HomePage() {
     const userId = localStorage.getItem('userId')
     setIsLoggedIn(!!userId)
 
-    // Fetch some featured movies for the showcase
-    fetch('http://localhost:8000/api/movies')
+    // Update API calls to use environment variable
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/movies`)
       .then(res => res.json())
       .then(data => {
-        setFeaturedMovies(data.slice(0, 8)) // Get first 5 movies
+        console.log('Fetched movies:', data)
+        setFeaturedMovies(data.slice(0, 6))
       })
-      .catch(console.error)
+      .catch(error => console.error('Error fetching movies:', error))
 
-    // New cinemas fetch
-    fetch('http://localhost:8000/api/cinemas')
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cinemas`)
       .then(res => res.json())
       .then(data => {
-        setFeaturedCinemas(data.slice(0, 3))
+        console.log('Fetched cinemas:', data)
+        setFeaturedCinemas(data.slice(0, 4))
       })
-      .catch(console.error)
+      .catch(error => console.error('Error fetching cinemas:', error))
   }, [])
 
   const scrollCarousel = (direction: 'left' | 'right') => {
