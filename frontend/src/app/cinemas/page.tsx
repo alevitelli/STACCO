@@ -46,7 +46,7 @@ function CinemasContent() {
   }
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/cinemas')
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cinemas`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch cinemas')
         return res.json()

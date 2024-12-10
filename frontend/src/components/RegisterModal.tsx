@@ -26,7 +26,7 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
 
   const checkEmailExists = async (email: string) => {
     try {
-      const response = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/users/check-email', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/check-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

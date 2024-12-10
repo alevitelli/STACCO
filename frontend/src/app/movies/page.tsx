@@ -95,7 +95,7 @@ function MoviesContent() {
 
   useEffect(() => {
     setLoading(true)
-    fetch('http://localhost:8000/api/movies')
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/movies`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch movies')
         return res.json()
