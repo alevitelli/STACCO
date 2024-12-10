@@ -30,8 +30,8 @@ class DatabaseManager:
                     'dbname': result.path[1:],
                     'user': result.username,
                     'password': result.password,
-                    'host': result.hostname,  # Should be autorack.proxy.rlwy.net
-                    'port': result.port       # Should be your external port (43906)
+                    'host': result.hostname,
+                    'port': result.port
                 }
                 logger.info(f"Configured connection to: {self.db_config['host']}:{self.db_config['port']}")
             else:
@@ -68,11 +68,36 @@ class DatabaseManager:
             logger.error(f"Current config (sanitized): host={self.db_config.get('host')}, port={self.db_config.get('port')}, user={self.db_config.get('user')}")
             raise
 
+    async def test_connection(self):
+        """Test the database connection"""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('SELECT version()')
+                    version = cur.fetchone()[0]
+                    logger.info(f"Successfully connected to PostgreSQL: {version}")
+                    return True
+        except Exception as e:
+            logger.error(f"Database connection test failed: {str(e)}")
+            raise
+
+    async def close_connections(self):
+        """Close any open database connections"""
+        try:
+            # If you have any connection pooling or persistent connections, close them here
+            logger.info("Closing database connections")
+            return True
+        except Exception as e:
+            logger.error(f"Error closing database connections: {str(e)}")
+            raise
+
     def _get_connection(self):
         try:
-            return psycopg2.connect(**self.db_config)
+            conn = psycopg2.connect(**self.db_config)
+            return conn
         except Exception as e:
-            logger.error(f"Error connecting to database: {str(e)}")
+            logger.error(f"Connection error: {str(e)}")
+            logger.error(f"Attempted connection to: {self.db_config['host']}:{self.db_config['port']}")
             raise
 
     def _ensure_db_exists(self):
