@@ -19,14 +19,17 @@ from psycopg2.extras import RealDictCursor
 
 load_dotenv()
 
-port = int(os.getenv("PORT", 8000))
-host = "0.0.0.0"  # Required for Railway
+# port = int(os.getenv("PORT", 8000))
+# host = "0.0.0.0"  # Required for Railway
 
 app = FastAPI(
     title="Stacco API",
     description="API for Stacco movie application",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/api/docs",  # Customize docs URL
+    redoc_url="/api/redoc"  # Customize redoc URL
 )
+
 db = DatabaseManager()
 
 # Password hashing configuration
@@ -38,7 +41,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://stacco.vercel.app",
-        # Add any other frontend URLs you need
+        "https://stacco-production.up.railway.app",
+        os.getenv("FRONTEND_URL", "")  # Add configurable frontend URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -79,11 +83,30 @@ class UserResponse(BaseModel):
     data_nascita: str
     telefono: str
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Railway to verify the application is running"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "environment": "production" if os.getenv("RAILWAY_ENVIRONMENT") else "development"
+    }
+
+@app.get("/api/debug/config")
+async def get_config():
+    """Debug endpoint to check configuration"""
+    return {
+        "database_url_type": "PUBLIC" if os.getenv("DATABASE_PUBLIC_URL") else "STANDARD",
+        "environment": os.getenv("RAILWAY_ENVIRONMENT", "development"),
+        "host": "0.0.0.0",  # Required for Railway
+        "port": int(os.getenv("PORT", 8000)),
+        "cors_origins": app.state.cors_origins
+    }
+
 @app.get("/api/movies")
 async def get_movies():
     try:
         movies = await db.get_all_movies()
-        
         # Add showtimes to each movie
         for movie in movies:
             showtimes = await db.get_movie_showtimes(movie["id"])
@@ -672,23 +695,42 @@ async def get_debug_data():
     except Exception as e:
         return {"error": str(e)}
 
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint for Railway to verify the application is running
-    """
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "environment": "production" if os.getenv("RAILWAY_ENVIRONMENT") else "development"
-    }
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application state on startup"""
+    try:
+        # Test database connection
+        await db.test_connection()
+        
+        # Store CORS origins in app state
+        app.state.cors_origins = [
+            "http://localhost:3000",
+            "https://stacco.vercel.app",
+            "https://stacco-production.up.railway.app",
+            os.getenv("FRONTEND_URL", "")
+        ]
+    except Exception as e:
+        print(f"Startup error: {e}")
+        raise
+
+# Proper shutdown event
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on application shutdown"""
+    try:
+        await db.close_connections()
+    except Exception as e:
+        print(f"Shutdown error: {e}")
 
 
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(
         "api.main:app",
-        host=host,
+        host="0.0.0.0",  # Required for Railway
         port=port,
-        reload=False  # Disable reload in production
+        reload=False,    # Disable reload in production
+        forwarded_allow_ips="*",  # Required for Railway's proxy
+        proxy_headers=True        # Required for Railway's proxy
     )
