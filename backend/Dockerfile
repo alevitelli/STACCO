@@ -18,7 +18,7 @@ COPY . .
 
 # Set environment variables
 ENV PYTHONPATH=/app
-ENV PORT=8000  # Default port
+ENV PORT=8000  
 
 # Create an entrypoint script
 RUN echo '#!/bin/bash\n\
