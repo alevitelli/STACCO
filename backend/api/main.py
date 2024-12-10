@@ -16,6 +16,7 @@ from jwt.exceptions import PyJWTError
 from dotenv import load_dotenv
 import sqlite3
 from psycopg2.extras import RealDictCursor
+import logging
 
 load_dotenv()
 
@@ -58,6 +59,8 @@ EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+
+logger = logging.getLogger(__name__)
 
 class UserRegister(BaseModel):
     email: str
@@ -702,6 +705,11 @@ async def startup_event():
         # Test database connection
         await db.test_connection()
         
+        # Log important configuration
+        port = int(os.getenv("PORT", 8000))
+        logger.info(f"Starting application on port {port}")
+        logger.info(f"Database host: {os.getenv('PGHOST') or 'using DATABASE_URL'}")
+        
         # Store CORS origins in app state
         app.state.cors_origins = [
             "http://localhost:3000",
@@ -709,8 +717,12 @@ async def startup_event():
             "https://stacco-production.up.railway.app",
             os.getenv("FRONTEND_URL", "")
         ]
+        
+        # Ensure database tables exist
+        await db._ensure_db_exists()
+        
     except Exception as e:
-        print(f"Startup error: {e}")
+        logger.error(f"Startup error: {e}")
         raise
 
 # Proper shutdown event
@@ -727,10 +739,9 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(
-        "api.main:app",
-        host="0.0.0.0",  # Required for Railway
+        app,
+        host="0.0.0.0",
         port=port,
-        reload=False,    # Disable reload in production
-        forwarded_allow_ips="*",  # Required for Railway's proxy
-        proxy_headers=True        # Required for Railway's proxy
+        proxy_headers=True,
+        forwarded_allow_ips="*"
     )
