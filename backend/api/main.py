@@ -20,6 +20,12 @@ import logging
 
 load_dotenv()
 
+SECRET_KEY = os.getenv('SECRET_KEY')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+
 # port = int(os.getenv("PORT", 8000))
 # host = "0.0.0.0"  # Required for Railway
 
@@ -32,6 +38,7 @@ app = FastAPI(
 )
 
 db = DatabaseManager()
+
 
 # Password hashing configuration
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -328,12 +335,12 @@ async def send_verification_email(email_data: dict):
                 'email': email_data['email'],
                 'exp': datetime.utcnow() + timedelta(hours=24)
             },
-            'your-secret-key',  # Move this to environment variables
+            SECRET_KEY,  # Move this to environment variables
             algorithm='HS256'
         )
         
         # Create verification link
-        verification_link = f"http://localhost:3000/verify-email?token={token}"
+        verification_link = f"{os.getenv('NEXT_PUBLIC_API_URL')}/verify-email?token={token}"
         
         # Email content
         msg = MIMEText(f'''
@@ -344,13 +351,13 @@ async def send_verification_email(email_data: dict):
         ''', 'html')
         
         msg['Subject'] = 'Verifica il tuo account'
-        msg['From'] = 'your-email@example.com'  # Update with your email
+        msg['From'] = EMAIL_HOST_USER  # Update with your email
         msg['To'] = email_data['email']
         
         # Send email (configure with your SMTP settings)
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
             server.starttls()
-            server.login('your-email@example.com', 'your-password')  # Use environment variables
+            server.login(EMAIL_HOST_USER, EMAIL_HOST_PASSWORD)  # Use environment variables
             server.send_message(msg)
         
         return {"message": "Verification email sent"}
@@ -363,7 +370,7 @@ async def send_verification_email(email_data: dict):
 @app.get("/api/users/verify/{token}")
 async def verify_email(token: str):
     try:
-        payload = jwt.decode(token, 'your-secret-key', algorithms=['HS256'])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
         email = payload['email']
         
         # Update user verification status in database
@@ -436,12 +443,12 @@ async def resend_verification_email(user_id: int):
                 'email': user['email'],
                 'exp': datetime.utcnow() + timedelta(hours=24)
             },
-            'your-secret-key',  # Move to environment variables
+            SECRET_KEY,  # Move to environment variables
             algorithm='HS256'
         )
         
         # Create verification link
-        verification_link = f"http://localhost:3000/verify-email?token={token}"
+        verification_link = f"{os.getenv('NEXT_PUBLIC_API_URL')}/verify-email?token={token}"
         
         # Email content
         msg = MIMEText(f'''
@@ -484,7 +491,7 @@ async def request_password_reset(email_data: dict):
                 'user_id': user['id'],
                 'exp': datetime.utcnow() + timedelta(hours=1)
             },
-            'your-secret-key',  # Move this to environment variables
+            SECRET_KEY,  # Move this to environment variables
             algorithm='HS256'
         )
         
@@ -541,42 +548,24 @@ async def request_password_reset(email_data: dict):
 @app.post("/api/users/reset-password/{token}")
 async def reset_password(token: str, password_data: dict):
     try:
-        # Verify token and get user_id
-        try:
-            payload = jwt.decode(token, 'your-secret-key', algorithms=['HS256'])
-            user_id = payload.get('user_id')
-            if not user_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid token"
-                )
-        except PyJWTError:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid or expired token"
-            )
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        user_id = payload.get('user_id')
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid token")
 
-        # Hash the new password
-        hashed_password = pwd_context.hash(password_data['password'])
-
-        # Update password in database
+        hashed_password = pwd_context.hash(password_data['password'])  # Implement password hashing
         success = await db.update_user_password(user_id, hashed_password)
         if not success:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to update password"
-            )
+            raise HTTPException(status_code=500, detail="Failed to update password")
 
         return {"message": "Password reset successful"}
-
-    except HTTPException as he:
-        raise he
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=400, detail="Token has expired")
+    except jwt.JWTError:
+        raise HTTPException(status_code=400, detail="Invalid token")
     except Exception as e:
-        print(f"Password reset error: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to reset password"
-        )
+        logger.error(f"Error resetting password: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error resetting password")
 
 # Delete Account
 @app.delete("/api/users/{user_id}")

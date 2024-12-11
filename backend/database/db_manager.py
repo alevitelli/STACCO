@@ -321,7 +321,6 @@ class DatabaseManager:
     async def get_user_by_email(self, email: str) -> Optional[dict]:
         try:
             with self._get_connection() as conn:
-                conn.row_factory = sqlite3.Row
                 cursor = conn.execute("""
                     SELECT * FROM users WHERE email = ?
                 """, (email,))
@@ -334,7 +333,6 @@ class DatabaseManager:
     async def get_all_users(self) -> List[dict]:
         try:
             with self._get_connection() as conn:
-                conn.row_factory = sqlite3.Row
                 cursor = conn.execute("""
                     SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
                     FROM users
@@ -348,7 +346,6 @@ class DatabaseManager:
     async def get_user_by_id(self, user_id: int) -> Optional[dict]:
         try:
             with self._get_connection() as conn:
-                conn.row_factory = sqlite3.Row
                 cursor = conn.execute("""
                     SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
                     FROM users WHERE id = ?
@@ -398,27 +395,26 @@ class DatabaseManager:
             print(f"Database error: {str(e)}")
             raise Exception(f"Database error: {str(e)}")
 
-    async def update_user_profile_picture(self, user_id: int, profile_picture_url: str):
-        query = """
-            UPDATE users 
-            SET profile_picture = $1 
-            WHERE id = $2 
-            RETURNING *
-        """
-        return await sqlite3.fetch_one(query, profile_picture_url, user_id)
+    # async def update_user_profile_picture(self, user_id: int, profile_picture_url: str):
+    #     query = """
+    #         UPDATE users 
+    #         SET profile_picture = $1 
+    #         WHERE id = $2 
+    #         RETURNING *
+    #     """
+    #     return await sqlite3.fetch_one(query, profile_picture_url, user_id)
 
     async def update_user_password(self, user_id: int, hashed_password: str):
         try:
             with self._get_connection() as conn:
-                cursor = conn.cursor()
-                query = "UPDATE users SET password = ? WHERE id = ?"
-                cursor.execute(query, (hashed_password, user_id))
-                conn.commit()
-                return True
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE users SET password = %s WHERE id = %s", (hashed_password, user_id))
+                    conn.commit()
+                    return True
         except Exception as e:
-            print(f"Error updating password: {str(e)}")
+            logger.error(f"Error updating password: {str(e)}")
             return False
-
+    
     async def delete_user(self, user_id: int):
         try:
             with self._get_connection() as conn:
