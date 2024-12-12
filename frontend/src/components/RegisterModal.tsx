@@ -38,24 +38,14 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
         body: JSON.stringify({ email })
       });
 
-      console.log('Response status:', response.status);
-      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error response:', errorText);
-        
-        if (response.status === 404) {
-          throw new Error('API endpoint not found. Please check the URL.');
-        }
-        
-        throw new Error(
-          `Server error: ${response.status} ${errorText}`
-        );
+        console.error('Response status:', response.status);
+        const errorData = await response.json();
+        console.error('Error response:', errorData);
+        throw new Error(`Server error: ${response.status} ${JSON.stringify(errorData)}`);
       }
-      
+
       const data = await response.json();
-      console.log('Response data:', data);
-      
       return data.exists;
     } catch (error) {
       console.error('Error in checkEmailExists:', error);

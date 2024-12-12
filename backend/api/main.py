@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
@@ -58,7 +58,7 @@ app.add_middleware(
         "http://localhost:8000",
         "https://stacco.vercel.app",
         "https://stacco-production.up.railway.app",
-        os.getenv("FRONTEND_URL", ""),
+        os.getenv("NEXT_PUBLIC_FRONTEND_URL", ""),
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],  # Explicitly list allowed methods
@@ -103,20 +103,15 @@ class PasswordResetRequest(BaseModel):
     email: str
 
 @app.post("/api/check_email")
-async def check_email(email_data):
+async def check_email(email: str = Body(..., embed=True)):
     try:
-        logger.info(f"Received email check request for: {email_data.email}")
-        
-        existing_user = await db.get_user_by_email(email_data.email)
-        logger.info(f"Database response: {existing_user is not None}")
-        
-        return {"exists": existing_user is not None}
-        
+        user = await db.get_user_by_email(email)
+        return {"exists": user is not None}
     except Exception as e:
         logger.error(f"Error checking email: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=str(e)
+            detail=f"Error checking email: {str(e)}"
         )
 
 @app.get("/health")
@@ -426,7 +421,7 @@ async def request_password_reset(email_data: PasswordResetRequest):
             logger.info(f"Generated new token: {token[:20]}...")  # Log first 20 chars
             
             # Create reset link
-            reset_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/reset-password?token={token}"
+            reset_link = f"{os.getenv('NEXT_PUBLIC_FRONTEND_URL')}/reset-password?token={token}"
             logger.info("Reset link generated successfully")
             
             # Email content
@@ -623,7 +618,7 @@ async def resend_verification_email(user_id: int):
         )
         
         # Create verification link
-        verification_link = f"{os.getenv('NEXT_PUBLIC_API_URL')}/verify-email?token={token}"
+        verification_link = f"{os.getenv('NEXT_PUBLIC_FRONTEND_URL')}/verify-email?token={token}"
         
         # Email content
         msg = MIMEText(f'''
@@ -837,7 +832,7 @@ async def startup_event():
             "http://localhost:3000",
             "https://stacco.vercel.app",
             "https://stacco-production.up.railway.app",
-            os.getenv("FRONTEND_URL", "")
+            os.getenv("NEXT_PUBLIC_FRONTEND_URL", "")
         ]
         
         # Initialize database tables
