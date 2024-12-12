@@ -29,8 +29,11 @@ interface Showtime {
 interface Movie {
   id: number
   title: string
+  genre: string
+  duration: number
+  language: string
+  poster_url: string
   cinemas: string
-  language?: string
   showtimes?: Showtime[]
 }
 
@@ -206,8 +209,14 @@ function MoviesContent() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-4">
           {filteredMovies.map((movie) => (
             <MovieCard 
-              key={movie.id} 
-              {...movie} 
+              key={movie.id}
+              id={movie.id.toString()}
+              title={movie.title}
+              genre={movie.genre}
+              duration={movie.duration}
+              language={movie.language}
+              poster_url={movie.poster_url}
+              cinemas={movie.cinemas}
               currentFilters={{
                 date: selectedDate,
                 cinema: selectedCinema,
