@@ -1,8 +1,8 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
-from datetime import datetime
+from datetime import datetime, date
 from database.db_manager import DatabaseManager
 from .models import Movie, Showtime, Cinema
 from typing import List, Optional
@@ -17,10 +17,17 @@ from dotenv import load_dotenv
 import sqlite3
 from psycopg2.extras import RealDictCursor
 import logging
+from fastapi.responses import JSONResponse
+import json
 
 load_dotenv()
 
-SECRET_KEY = os.getenv('SECRET_KEY')
+logger = logging.getLogger(__name__)
+
+SECRET_KEY = os.getenv("SECRET_KEY", "your-fallback-secret-key")
+if not isinstance(SECRET_KEY, str):
+    SECRET_KEY = str(SECRET_KEY)
+logger.info(f"SECRET_KEY initialized: {bool(SECRET_KEY)}")
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
@@ -48,12 +55,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost:8000",
         "https://stacco.vercel.app",
         "https://stacco-production.up.railway.app",
-        os.getenv("FRONTEND_URL", "")  # Add configurable frontend URL
+        os.getenv("FRONTEND_URL", ""),
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],  # Explicitly list allowed methods
     allow_headers=["*"],
 )
 
@@ -66,8 +74,6 @@ EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-
-logger = logging.getLogger(__name__)
 
 class UserRegister(BaseModel):
     email: str
@@ -93,6 +99,26 @@ class UserResponse(BaseModel):
     data_nascita: str
     telefono: str
 
+class PasswordResetRequest(BaseModel):
+    email: str
+
+@app.post("/api/check_email")
+async def check_email(email_data):
+    try:
+        logger.info(f"Received email check request for: {email_data.email}")
+        
+        existing_user = await db.get_user_by_email(email_data.email)
+        logger.info(f"Database response: {existing_user is not None}")
+        
+        return {"exists": existing_user is not None}
+        
+    except Exception as e:
+        logger.error(f"Error checking email: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Railway to verify the application is running"""
@@ -100,17 +126,6 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "environment": "production" if os.getenv("RAILWAY_ENVIRONMENT") else "development"
-    }
-
-@app.get("/api/debug/config")
-async def get_config():
-    """Debug endpoint to check configuration"""
-    return {
-        "database_url_type": "PUBLIC" if os.getenv("DATABASE_PUBLIC_URL") else "STANDARD",
-        "environment": os.getenv("RAILWAY_ENVIRONMENT", "development"),
-        "host": "0.0.0.0",  # Required for Railway
-        "port": int(os.getenv("PORT", 8000)),
-        "cors_origins": app.state.cors_origins
     }
 
 @app.get("/api/movies")
@@ -191,7 +206,7 @@ async def get_cinema(cinema_id: str):
     except Exception as e:
         logger.error(f"Error in get_cinema: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 @app.post("/api/users/register")
 async def register_user(user_data: UserRegister):
     try:
@@ -213,8 +228,12 @@ async def register_user(user_data: UserRegister):
         if not created_user:
             raise HTTPException(status_code=500, detail="Failed to create user")
             
+        # Format the date in the response
+        if isinstance(created_user["data_nascita"], date):
+            created_user["data_nascita"] = created_user["data_nascita"].isoformat()
+            
         # Return the created user data
-        return {
+        return JSONResponse(content={
             "message": "User registered successfully",
             "user": {
                 "id": created_user["id"],
@@ -226,7 +245,7 @@ async def register_user(user_data: UserRegister):
                 "data_nascita": created_user["data_nascita"],
                 "telefono": created_user["telefono"]
             }
-        }
+        })
         
     except HTTPException as he:
         raise he
@@ -235,95 +254,76 @@ async def register_user(user_data: UserRegister):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/users/login")
-async def login_user(user_data: UserLogin):
+async def login(user_data: UserLogin):
     try:
-        # Get user from database
-        user = await db.get_user_by_email(user_data.email)
-        
-        # Check if user exists
-        if user is None:
+        email = user_data.email
+        password = user_data.password  # Make sure we're getting the password
+        logger.info(f"Login attempt for email: {email}")
+
+        user = await db.get_user_by_email(email)
+        if not user:
             raise HTTPException(
-                status_code=400,
-                detail="Email o password non corretti"
+                status_code=401,
+                detail="Invalid email or password"
             )
-        
-        # Verify password
-        if not pwd_context.verify(user_data.password, user["password"]):
+
+        # Verify the password using the same pwd_context we used for hashing
+        if not pwd_context.verify(password, user.get('password', '')):
             raise HTTPException(
-                status_code=400,
-                detail="Email o password non corretti"
+                status_code=401,
+                detail="Invalid email or password"
             )
-        
-        # Remove sensitive data before sending response
-        user_response = {
-            "id": user["id"],
-            "email": user["email"],
-            "nome": user["nome"],
-            "cognome": user["cognome"]
-        }
+
+        # Remove password from response
+        user_response = {k: v for k, v in user.items() if k != 'password'}
         
         return {
             "message": "Login successful",
             "user": user_response
         }
-        
-    except HTTPException as he:
-        raise he
+
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Login error: {str(e)}")  # Add logging for debugging
+        logger.error(f"Login error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail="Si è verificato un errore durante il login"
+            detail="Login failed"
         )
 
 @app.get("/api/users", response_model=List[UserResponse])
 async def get_users():
     try:
+        logger.info("Fetching all users")
         users = await db.get_all_users()
-        return users
+        
+        # Format the response
+        formatted_users = []
+        for user in users:
+            # Convert date to string format
+            data_nascita = user["data_nascita"]
+            if isinstance(data_nascita, date):
+                data_nascita = data_nascita.isoformat()
+            
+            formatted_user = {
+                "id": user["id"],
+                "email": user["email"],
+                "nome": user["nome"],
+                "cognome": user["cognome"],
+                "citta": user["citta"],
+                "cap": user["cap"],
+                "data_nascita": data_nascita,
+                "telefono": user["telefono"]
+            }
+            formatted_users.append(formatted_user)
+        
+        return JSONResponse(content=formatted_users)
+        
     except Exception as e:
-        print(f"Error getting users: {str(e)}")
+        logger.error(f"Error getting users: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail="Error retrieving users"
-        )
-
-@app.get("/api/users/{user_id}", response_model=UserResponse)
-async def get_user(user_id: int):
-    try:
-        user = await db.get_user_by_id(user_id)
-        if user is None:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found"
-            )
-        return user
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error getting user: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Error retrieving user"
-        )
-
-@app.post("/api/users/check-email")
-async def check_email(email_data: dict):
-    try:
-        existing_user = await db.get_user_by_email(email_data["email"])
-        if existing_user:
-            raise HTTPException(
-                status_code=400,
-                detail="Email already registered"
-            )
-        return {"message": "Email available"}
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error checking email: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Error checking email"
+            detail=f"Error retrieving users: {str(e)}"
         )
 
 @app.post("/api/users/send-verification")
@@ -388,13 +388,182 @@ async def verify_email(token: str):
             detail="Invalid verification token"
         )
 
+# Password Reset Request
+@app.post("/api/users/password-reset/request")
+async def request_password_reset(email_data: PasswordResetRequest):
+    try:
+        email = email_data.email
+        logger.info(f"Processing password reset request for email: {email}")
+        
+        user = await db.get_user_by_email(email)
+        
+        if not user:
+            logger.info(f"No user found for email: {email}")
+            return {"message": "Se l'email esiste, riceverai il link per reimpostare la password"}
+        
+        try:
+            # Generate reset token with proper expiration (1 hour from now)
+            current_time = datetime.utcnow()
+            exp_time = current_time + timedelta(hours=1)
+            
+            logger.info(f"Current UTC time: {current_time}")
+            logger.info(f"Expiration UTC time: {exp_time}")
+            
+            token_data = {
+                'user_id': str(user['id']),
+                'exp': exp_time.timestamp(),
+                'iat': current_time.timestamp()  # Add issued at time
+            }
+            
+            logger.info(f"Token data structure: {token_data}")
+            
+            # Generate token
+            token = jwt.encode(
+                payload=token_data,
+                key=str(SECRET_KEY),
+                algorithm='HS256'
+            )
+            logger.info(f"Generated new token: {token[:20]}...")  # Log first 20 chars
+            
+            # Create reset link
+            reset_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/reset-password?token={token}"
+            logger.info("Reset link generated successfully")
+            
+            # Email content
+            msg = MIMEText(f'''
+                <html>
+                    <body>
+                        <h1>Reimposta la tua password</h1>
+                        <p>Hai richiesto di reimpostare la password del tuo account.</p>
+                        <p>Clicca sul link seguente per procedere:</p>
+                        <a href="{reset_link}">Reimposta Password</a>
+                        <p>Il link scadrà tra 1 ora.</p>
+                        <p>Se non hai richiesto tu il reset della password, ignora questa email.</p>
+                    </body>
+                </html>
+            ''', 'html', 'utf-8')
+            
+            msg['Subject'] = 'Reimposta la tua password'
+            msg['From'] = EMAIL_HOST_USER
+            msg['To'] = email
+            
+            # Send email
+            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+                server.starttls()
+                server.login(EMAIL_HOST_USER, EMAIL_HOST_PASSWORD)
+                server.send_message(msg)
+                logger.info(f"Password reset email sent successfully to {email}")
+            
+            return {"message": "Se l'email esiste, riceverai il link per reimpostare la password"}
+            
+        except Exception as jwt_error:
+            logger.error(f"JWT encoding error: {str(jwt_error)}")
+            raise
+            
+    except Exception as e:
+        logger.error(f"Password reset error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Si è verificato un errore durante l'invio dell'email"
+        )
+
+# Reset Password with Token
+@app.post("/api/users/reset-password/{token}")
+async def reset_password(token: str, password_data: dict):
+    try:
+        logger.info(f"Attempting to verify token: {token[:20]}...")  # Log first 20 chars
+        
+        # Verify the token
+        try:
+            # Add leeway to handle slight time differences
+            payload = jwt.decode(
+                token, 
+                str(SECRET_KEY), 
+                algorithms=['HS256'],
+                leeway=60  # Increase leeway to 60 seconds
+            )
+            
+            logger.info(f"Token payload: {payload}")
+            user_id = payload.get('user_id')
+            exp = payload.get('exp')
+            iat = payload.get('iat')
+            
+            logger.info(f"Token details - User ID: {user_id}, Issued at: {datetime.fromtimestamp(iat) if iat else 'N/A'}, Expires: {datetime.fromtimestamp(exp) if exp else 'N/A'}")
+            logger.info(f"Current UTC time: {datetime.utcnow()}")
+            
+            if not user_id:
+                raise HTTPException(status_code=400, detail="Invalid token")
+                
+            # Check if token is expired
+            if exp and datetime.fromtimestamp(exp) < datetime.utcnow():
+                logger.error(f"Token expired at {datetime.fromtimestamp(exp)}")
+                raise HTTPException(status_code=400, detail="Token has expired")
+                
+        except jwt.ExpiredSignatureError:
+            logger.error("JWT expired signature error")
+            raise HTTPException(status_code=400, detail="Token has expired")
+        except jwt.JWTError as e:
+            logger.error(f"JWT decode error: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid token")
+
+        # Get the new password from request body
+        new_password = password_data.get('password')
+        if not new_password:
+            raise HTTPException(status_code=400, detail="Password is required")
+
+        # Hash the new password
+        hashed_password = pwd_context.hash(new_password)
+
+        # Update the password in the database
+        success = await db.update_user_password(int(user_id), hashed_password)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update password")
+
+        return {"message": "Password updated successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Password reset error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error resetting password")
+
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+async def get_user(user_id: int):
+    try:
+        user = await db.get_user_by_id(user_id)
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+            
+        # Format the date
+        if isinstance(user["data_nascita"], date):
+            user["data_nascita"] = user["data_nascita"].isoformat()
+            
+        return JSONResponse(content=user)
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error getting user: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error retrieving user"
+        )        
+
 @app.put("/api/users/{user_id}")
 async def update_user(user_id: int, user_data: dict):
     try:
         updated_user = await db.update_user(user_id, user_data)
         if not updated_user:
             raise HTTPException(status_code=404, detail="User not found")
-        return updated_user
+            
+        # Format the date in the response
+        if isinstance(updated_user["data_nascita"], date):
+            updated_user["data_nascita"] = updated_user["data_nascita"].isoformat()
+            
+        return JSONResponse(content=updated_user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -402,7 +571,13 @@ async def update_user(user_id: int, user_data: dict):
 async def get_user_movie_history(user_id: int):
     try:
         history = await db.get_user_movie_history(user_id)
-        return history
+        
+        # Format dates in the movie history
+        for entry in history:
+            if isinstance(entry.get("watch_date"), (date, datetime)):
+                entry["watch_date"] = entry["watch_date"].isoformat()
+                
+        return JSONResponse(content=history)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -471,101 +646,6 @@ async def resend_verification_email(user_id: int):
         return {"message": "Verification email sent"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-# Password Reset Request
-@app.post("/api/users/reset-password")
-async def request_password_reset(email_data: dict):
-    try:
-        print(f"Password reset requested for email: {email_data['email']}")  # Debug log
-        user = await db.get_user_by_email(email_data['email'])
-        
-        if not user:
-            print("User not found")  # Debug log
-            return {"message": "Se l'email esiste, riceverai il link per reimpostare la password"}
-        
-        print(f"User found: {user['id']}")  # Debug log
-        
-        # Generate reset token
-        token = jwt.encode(
-            {
-                'user_id': user['id'],
-                'exp': datetime.utcnow() + timedelta(hours=1)
-            },
-            SECRET_KEY,  # Move this to environment variables
-            algorithm='HS256'
-        )
-        
-        print(f"Reset token generated: {token}")  # Debug log
-        
-        # Create reset link
-        reset_link = f"http://localhost:3000/reset-password?token={token}"
-        print(f"Reset link: {reset_link}")  # Debug log
-        
-        try:
-            # Email content
-            msg = MIMEText(f'''
-                <html>
-                    <body>
-                        <h1>Reimposta la tua password</h1>
-                        <p>Hai richiesto di reimpostare la password del tuo account.</p>
-                        <p>Clicca sul link seguente per procedere:</p>
-                        <a href="{reset_link}">Reimposta Password</a>
-                        <p>Il link scadrà tra 1 ora.</p>
-                        <p>Se non hai richiesto tu il reset della password, ignora questa email.</p>
-                    </body>
-                </html>
-            ''', 'html', 'utf-8')
-            
-            msg['Subject'] = 'Reimposta la tua password'
-            msg['From'] = EMAIL_HOST_USER
-            msg['To'] = user['email']
-            
-            print("Attempting to send email...")  # Debug log
-            
-            # Send email
-            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
-                server.starttls()
-                print("Connected to SMTP server")  # Debug log
-                server.login(EMAIL_HOST_USER, EMAIL_HOST_PASSWORD)
-                print("Logged in to SMTP server")  # Debug log
-                server.send_message(msg)
-                print("Email sent successfully")  # Debug log
-            
-            return {"message": "Se l'email esiste, riceverai il link per reimpostare la password"}
-            
-        except Exception as e:
-            print(f"Email sending error: {str(e)}")  # Debug log
-            raise
-            
-    except Exception as e:
-        print(f"Password reset error: {str(e)}")  # Debug log
-        raise HTTPException(
-            status_code=500,
-            detail="Si è verificato un errore durante l'invio dell'email"
-        )
-
-# Reset Password with Token
-@app.post("/api/users/reset-password/{token}")
-async def reset_password(token: str, password_data: dict):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            raise HTTPException(status_code=400, detail="Invalid token")
-
-        hashed_password = pwd_context.hash(password_data['password'])  # Implement password hashing
-        success = await db.update_user_password(user_id, hashed_password)
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to update password")
-
-        return {"message": "Password reset successful"}
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=400, detail="Token has expired")
-    except jwt.JWTError:
-        raise HTTPException(status_code=400, detail="Invalid token")
-    except Exception as e:
-        logger.error(f"Error resetting password: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error resetting password")
 
 # Delete Account
 @app.delete("/api/users/{user_id}")
@@ -697,6 +777,49 @@ async def get_debug_data():
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/debug/users")
+async def debug_users():
+    try:
+        with db._get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check table existence
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'users'
+                    );
+                """)
+                table_exists = cur.fetchone()['exists']
+                
+                if not table_exists:
+                    return {"error": "Users table does not exist"}
+                
+                # Get table structure
+                cur.execute("""
+                    SELECT column_name, data_type 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'users';
+                """)
+                columns = cur.fetchall()
+                
+                # Get row count
+                cur.execute("SELECT COUNT(*) as count FROM users;")
+                count = cur.fetchone()['count']
+                
+                # Get sample data (first row)
+                cur.execute("SELECT * FROM users LIMIT 1;")
+                sample = cur.fetchone()
+                
+                return {
+                    "table_exists": table_exists,
+                    "columns": columns,
+                    "row_count": count,
+                    "sample_data": sample
+                }
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize application state on startup"""
@@ -737,6 +860,9 @@ async def shutdown_event():
     except Exception as e:
         print(f"Shutdown error: {e}")
 
+@app.get("/api/test")
+async def test_endpoint():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn

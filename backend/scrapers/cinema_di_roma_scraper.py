@@ -4,7 +4,7 @@ from typing import List, Dict
 from backend.scrapers.base_scraper import BaseScraper
 import re
 from urllib.parse import urljoin
-from database.db_manager import DatabaseManager
+from backend.database.db_manager import DatabaseManager
 import asyncio
 from aiohttp import ClientTimeout
 from aiohttp.client_exceptions import ClientError

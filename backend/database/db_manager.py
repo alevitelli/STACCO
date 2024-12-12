@@ -15,46 +15,29 @@ load_dotenv()
 class DatabaseManager:
     def __init__(self):
         try:
-            # Try Railway's public URL first
-            database_url = os.getenv('DATABASE_PUBLIC_URL') or os.getenv('DATABASE_URL')
-            logger.info(f"Using connection URL type: {'PUBLIC' if os.getenv('DATABASE_PUBLIC_URL') else 'STANDARD'}")
+            # Check if we're in local mode
+            is_local = os.getenv('LOCAL_MODE', 'false').lower() == 'true'
             
-            if database_url:
-                result = urlparse(database_url)
-                logger.info(f"Parsed URL components: host={result.hostname}, port={result.port}")
-                
-                if not result.hostname or not result.port:
-                    raise ValueError("Invalid database URL: missing host or port")
-                
-                self.db_config = {
-                    'dbname': result.path[1:],
-                    'user': result.username,
-                    'password': result.password,
-                    'host': result.hostname,
-                    'port': result.port
-                }
-                logger.info(f"Configured connection to: {self.db_config['host']}:{self.db_config['port']}")
+            if is_local:
+                logger.info("Using local database")
+                database_url = os.getenv('LOCAL_DATABASE_URL')
             else:
-                # Fallback to individual variables
-                self.db_config = {
-                    'dbname': os.getenv('PGDATABASE', 'railway'),
-                    'user': os.getenv('PGUSER', 'postgres'),
-                    'password': os.getenv('POSTGRES_PASSWORD'),
-                    'host': os.getenv('PGHOST'),
-                    'port': int(os.getenv('PGPORT', '5432'))
-                }
-                logger.info("Using individual PostgreSQL environment variables")
+                logger.info("Using production database")
+                database_url = os.getenv('DATABASE_PUBLIC_URL') or os.getenv('DATABASE_URL')
+            
+            if not database_url:
+                raise ValueError("No database URL configured")
 
-            # Validate configuration
-            if not all([
-                self.db_config['host'],
-                self.db_config['port'],
-                self.db_config['user'],
-                self.db_config['password']
-            ]):
-                raise ValueError("Missing required database configuration")
-
-            logger.info(f"Attempting connection to PostgreSQL at {self.db_config['host']}:{self.db_config['port']}")
+            result = urlparse(database_url)
+            logger.info(f"Parsed URL components: host={result.hostname}, port={result.port}")
+            
+            self.db_config = {
+                'dbname': result.path[1:],
+                'user': result.username,
+                'password': result.password,
+                'host': result.hostname,
+                'port': result.port
+            }
             
             # Test connection
             with self._get_connection() as conn:
@@ -65,7 +48,6 @@ class DatabaseManager:
                     
         except Exception as e:
             logger.error(f"Database initialization error: {str(e)}")
-            logger.error(f"Current config (sanitized): host={self.db_config.get('host')}, port={self.db_config.get('port')}, user={self.db_config.get('user')}")
             raise
 
     async def test_connection(self):
@@ -188,8 +170,28 @@ class DatabaseManager:
             with self._get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute("""
-                        SELECT * FROM movies
-                        ORDER BY title
+                        SELECT DISTINCT m.*,
+                            (
+                                SELECT string_agg(DISTINCT c.name, ', ')
+                                FROM showtimes s
+                                JOIN cinemas c ON s.cinema_id = c.id
+                                WHERE s.movie_id = m.id
+                            ) as cinemas,
+                            (
+                                SELECT jsonb_agg(
+                                    jsonb_build_object(
+                                        'date', s.date,
+                                        'time', s.time,
+                                        'cinema', c.name,
+                                        'booking_link', s.booking_link
+                                    )
+                                )
+                                FROM showtimes s
+                                JOIN cinemas c ON s.cinema_id = c.id
+                                WHERE s.movie_id = m.id
+                            ) as showtimes
+                        FROM movies m
+                        ORDER BY m.title
                     """)
                     return cur.fetchall()
         except Exception as e:
@@ -275,125 +277,113 @@ class DatabaseManager:
     async def create_user(self, user_data: dict):
         try:
             with self._get_connection() as conn:
-                cursor = conn.execute("""
-                    INSERT INTO users (
-                        email, password, nome, cognome, 
-                        citta, cap, data_nascita, telefono,
-                        email_verified
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    user_data["email"],
-                    user_data["password"],
-                    user_data["nome"],
-                    user_data["cognome"],
-                    user_data["citta"],
-                    user_data["cap"],
-                    user_data["data_nascita"],
-                    user_data["telefono"],
-                    False  # email_verified default value
-                ))
-                conn.commit()
-                
-                # Get the created user data
-                user_id = cursor.lastrowid
-                cursor = conn.execute("""
-                    SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
-                    FROM users WHERE id = ?
-                """, (user_id,))
-                user = cursor.fetchone()
-                
-                if user:
-                    return {
-                        "id": user[0],
-                        "email": user[1],
-                        "nome": user[2],
-                        "cognome": user[3],
-                        "citta": user[4],
-                        "cap": user[5],
-                        "data_nascita": user[6],
-                        "telefono": user[7]
-                    }
-                return None
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        INSERT INTO users (
+                            email, password, nome, cognome, 
+                            citta, cap, data_nascita, telefono,
+                            email_verified
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id, email, nome, cognome, citta, cap, data_nascita, telefono
+                    """, (
+                        user_data["email"],
+                        user_data["password"],
+                        user_data["nome"],
+                        user_data["cognome"],
+                        user_data["citta"],
+                        user_data["cap"],
+                        user_data["data_nascita"],
+                        user_data["telefono"],
+                        False  # email_verified default value
+                    ))
+                    conn.commit()
+                    return cur.fetchone()
         except Exception as e:
-            print(f"Database error in create_user: {str(e)}")
-            raise Exception(f"Database error: {str(e)}")
+            logger.error(f"Database error in create_user: {str(e)}")
+            raise
 
-    async def get_user_by_email(self, email: str) -> Optional[dict]:
+    async def get_user_by_email(self, email: str) -> Optional[Dict]:
         try:
+            logger.info(f"Checking database for email: {email}")
             with self._get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT * FROM users WHERE email = ?
-                """, (email,))
-                user = cursor.fetchone()
-                return dict(user) if user else None
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+                    result = cur.fetchone()
+                    logger.info(f"Database query result: {result is not None}")
+                    if result:
+                        # Log user data (excluding sensitive info)
+                        safe_result = {k: v for k, v in result.items() if k != 'password'}
+                        logger.info(f"User data retrieved: {safe_result}")
+                    return result
         except Exception as e:
-            print(f"Database error: {str(e)}")  # Add logging for debugging
-            raise Exception(f"Database error: {str(e)}")
+            logger.error(f"Database error in get_user_by_email: {str(e)}")
+            raise
 
     async def get_all_users(self) -> List[dict]:
         try:
             with self._get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
-                    FROM users
-                """)
-                users = cursor.fetchall()
-                return [dict(user) for user in users]
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT *
+                        FROM users
+                    """)
+                    return cur.fetchall()
         except Exception as e:
-            print(f"Database error: {str(e)}")
-            raise Exception(f"Database error: {str(e)}")
+            logger.error(f"Database error in get_all_users: {str(e)}")
+            raise
 
     async def get_user_by_id(self, user_id: int) -> Optional[dict]:
         try:
             with self._get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
-                    FROM users WHERE id = ?
-                """, (user_id,))
-                user = cursor.fetchone()
-                return dict(user) if user else None
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT id, email, nome, cognome, citta, cap, data_nascita, telefono
+                        FROM users WHERE id = %s
+                    """, (user_id,))
+                    return cur.fetchone()
         except Exception as e:
-            print(f"Database error: {str(e)}")
-            raise Exception(f"Database error: {str(e)}")
+            logger.error(f"Database error in get_user_by_id: {str(e)}")
+            raise
 
     async def update_user(self, user_id: int, user_data: dict) -> Optional[dict]:
         try:
             with self._get_connection() as conn:
-                conn.execute("""
-                    UPDATE users 
-                    SET nome = ?, cognome = ?, citta = ?, cap = ?, telefono = ?
-                    WHERE id = ?
-                """, (
-                    user_data["nome"],
-                    user_data["cognome"],
-                    user_data["citta"],
-                    user_data["cap"],
-                    user_data["telefono"],
-                    user_id
-                ))
-                conn.commit()
-                return await self.get_user_by_id(user_id)
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        UPDATE users 
+                        SET nome = %s, cognome = %s, citta = %s, cap = %s, telefono = %s
+                        WHERE id = %s
+                        RETURNING *
+                    """, (
+                        user_data["nome"],
+                        user_data["cognome"],
+                        user_data["citta"],
+                        user_data["cap"],
+                        user_data["telefono"],
+                        user_id
+                    ))
+                    conn.commit()
+                    return cur.fetchone()
         except Exception as e:
-            print(f"Database error: {str(e)}")
-            raise Exception(f"Database error: {str(e)}")
+            logger.error(f"Database error in update_user: {str(e)}")
+            raise
 
     async def get_user_movie_history(self, user_id: int) -> List[dict]:
         try:
             with self._get_connection() as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT m.id, m.title, w.watch_date, c.name as cinema
-                    FROM movie_watches w
-                    JOIN movies m ON w.movie_id = m.id
-                    JOIN cinemas c ON w.cinema_id = c.id
-                    WHERE w.user_id = ?
-                    ORDER BY w.watch_date DESC
-                """, (user_id,))
-                history = cursor.fetchall()
-                return [dict(row) for row in history]
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT m.id, m.title, w.watch_date, c.name as cinema
+                        FROM movie_watches w
+                        JOIN movies m ON w.movie_id = m.id
+                        JOIN cinemas c ON w.cinema_id = c.id
+                        WHERE w.user_id = %s
+                        ORDER BY w.watch_date DESC
+                    """, (user_id,))
+                    return cur.fetchall()
         except Exception as e:
-            print(f"Database error: {str(e)}")
-            raise Exception(f"Database error: {str(e)}")
+            logger.error(f"Database error in get_user_movie_history: {str(e)}")
+            raise
 
     # async def update_user_profile_picture(self, user_id: int, profile_picture_url: str):
     #     query = """
@@ -418,16 +408,17 @@ class DatabaseManager:
     async def delete_user(self, user_id: int):
         try:
             with self._get_connection() as conn:
-                # First delete related records
-                # conn.execute("DELETE FROM movie_watches WHERE user_id = ?", (user_id,))
-                
-                # Then delete the user
-                cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-                conn.commit()
-                return cursor.rowcount > 0
+                with conn.cursor() as cur:
+                    # First delete related records if needed
+                    # cur.execute("DELETE FROM movie_watches WHERE user_id = %s", (user_id,))
+                    
+                    # Then delete the user
+                    cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+                    conn.commit()
+                    return True
         except Exception as e:
-            print(f"Database error in delete_user: {str(e)}")
-            raise Exception(f"Database error: {str(e)}")
+            logger.error(f"Database error in delete_user: {str(e)}")
+            raise
 
     async def get_cinema(self, cinema_id: str) -> Optional[Dict]:
         with self._get_connection() as conn:

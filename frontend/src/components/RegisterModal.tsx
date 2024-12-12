@@ -26,37 +26,62 @@ export default function RegisterModal({ isOpen, onClose, onRegisterSuccess }: Re
 
   const checkEmailExists = async (email: string) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/check-email`, {
+      console.log('Checking email:', email);
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/check_email`;
+      console.log('Making request to:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email })
-      })
+      });
 
-      const data = await response.json()
-      return !response.ok
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        
+        if (response.status === 404) {
+          throw new Error('API endpoint not found. Please check the URL.');
+        }
+        
+        throw new Error(
+          `Server error: ${response.status} ${errorText}`
+        );
+      }
+      
+      const data = await response.json();
+      console.log('Response data:', data);
+      
+      return data.exists;
     } catch (error) {
-      console.error('Error checking email:', error)
-      return false
+      console.error('Error in checkEmailExists:', error);
+      throw error;
     }
   }
 
   const handleContinue = async () => {
-    setError('')
+    setError('');
     
     if (!formData.email || !formData.password) {
-      setError('Per favore, compila tutti i campi obbligatori')
-      return
+      setError('Per favore, compila tutti i campi obbligatori');
+      return;
     }
 
-    const emailExists = await checkEmailExists(formData.email)
-    if (emailExists) {
-      setError('Email già registrata. Accedi al tuo account esistente.')
-      return
+    try {
+      const emailExists = await checkEmailExists(formData.email);
+      if (emailExists) {
+        setError('Email già registrata. Accedi al tuo account esistente.');
+        return;
+      }
+      setStep(2);
+    } catch (error) {
+      console.error('Error in handleContinue:', error);
+      setError('Si è verificato un errore. Riprova più tardi.');
     }
-
-    setStep(2)
   }
 
   const handleSocialLogin = (provider: string) => {

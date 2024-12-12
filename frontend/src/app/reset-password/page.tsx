@@ -27,6 +27,11 @@ function ResetPasswordForm() {
       return
     }
 
+    if (password.length < 8) {
+      setError('La password deve essere di almeno 8 caratteri')
+      return
+    }
+
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/reset-password/${token}`, {
         method: 'POST',
@@ -36,8 +41,10 @@ function ResetPasswordForm() {
         body: JSON.stringify({ password })
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error('Error resetting password')
+        throw new Error(data.detail || 'Error resetting password')
       }
 
       setSuccess(true)
@@ -46,7 +53,7 @@ function ResetPasswordForm() {
       }, 3000)
     } catch (error) {
       console.error('Password reset error:', error)
-      setError('Si è verificato un errore durante il reset della password')
+      setError('Si è verificato un errore durante il reset della password. Il link potrebbe essere scaduto.')
     }
   }
 

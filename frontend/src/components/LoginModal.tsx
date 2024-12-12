@@ -73,33 +73,36 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
   const handlePasswordReset = async () => {
     setError('')
     if (!formData.email) {
-      setError('Inserisci la tua email per reimpostare la password')
-      return
+        setError('Inserisci la tua email per reimpostare la password')
+        return
     }
 
-    console.log('Requesting password reset for:', formData.email)
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/reset-password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: formData.email })
-      })
+        console.log('Sending password reset request for email:', formData.email.trim())
+        
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/password-reset/request`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                email: formData.email.trim() 
+            })
+        })
 
-      console.log('Password reset response:', response.status)
+        const data = await response.json()
+        console.log('Password reset response:', data)
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error('Password reset error details:', errorData)
-        throw new Error('Error requesting password reset')
-      }
+        if (!response.ok) {
+            console.error('Password reset error details:', data)
+            throw new Error('Failed to send password reset email')
+        }
 
-      setError('Se l\'email esiste nel sistema, riceverai il link per reimpostare la password')
+        // Success message
+        setError('Se l\'email esiste nel sistema, riceverai il link per reimpostare la password')
     } catch (error) {
-      console.error('Password reset error:', error)
-      setError('Si è verificato un errore. Riprova più tardi.')
+        console.error('Password reset error:', error)
+        setError('Si è verificato un errore. Riprova più tardi.')
     }
   }
 

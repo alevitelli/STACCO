@@ -123,21 +123,21 @@ function MoviesContent() {
     const matchesSearch = movie.title.toLowerCase().includes(searchQuery.toLowerCase())
     
     const matchesLanguage = !selectedLanguage || (
-      selectedLanguage === 'Italiano' 
-        ? movie.language.toLowerCase().startsWith('italiano')
-        : selectedLanguage === 'Original' 
-          ? !movie.language.toLowerCase().startsWith('italiano')
-          : true
+        selectedLanguage === 'Italiano' 
+            ? movie.language?.toLowerCase().startsWith('italiano')
+            : selectedLanguage === 'Original' 
+                ? !movie.language?.toLowerCase().startsWith('italiano')
+                : true
     )
     
-    const matchesCinema = !selectedCinema || 
-      movie.cinemas.split(',').map((c: string) => c.trim()).includes(selectedCinema)
+    const movieCinemas = movie.cinemas?.split(',').map(c => c.trim()) || []
+    const matchesCinema = !selectedCinema || movieCinemas.includes(selectedCinema)
     
     const formattedSelectedDate = formatDate(selectedDate)
     const matchesDate = movie.showtimes && movie.showtimes.some(
-      (showtime: Showtime) => showtime.date === formattedSelectedDate
+        (showtime: Showtime) => showtime.date === formattedSelectedDate
     )
-
+    
     console.log('Filtering movie:', {
       title: movie.title,
       language: movie.language,
@@ -152,9 +152,9 @@ function MoviesContent() {
   })
 
   const availableCinemas = Array.from(new Set(
-    movies.flatMap(movie => 
-      movie.cinemas.split(',').map((cinema: string) => cinema.trim())
-    )
+    movies
+        .filter(movie => movie.cinemas)
+        .flatMap(movie => movie.cinemas.split(',').map((cinema: string) => cinema.trim()))
   )).sort()
 
   if (loading) {
