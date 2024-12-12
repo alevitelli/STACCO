@@ -26,11 +26,19 @@ interface Showtime {
   booking_link: string
 }
 
+interface Movie {
+  id: number
+  title: string
+  cinemas: string
+  language?: string
+  showtimes?: Showtime[]
+}
+
 function MoviesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  const [movies, setMovies] = useState<any[]>([])
+  const [movies, setMovies] = useState<Movie[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '')
   const [selectedLanguage, setSelectedLanguage] = useState(searchParams.get('language') || '')
@@ -117,7 +125,7 @@ function MoviesContent() {
       })
   }, [])
 
-  const filteredMovies = movies.filter(movie => {
+  const filteredMovies = movies.filter((movie: Movie) => {
     if (!movie) return false
     
     const matchesSearch = movie.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -130,7 +138,7 @@ function MoviesContent() {
                 : true
     )
     
-    const movieCinemas = movie.cinemas?.split(',').map(c => c.trim()) || []
+    const movieCinemas = movie.cinemas?.split(',').map((c: string) => c.trim()) || []
     const matchesCinema = !selectedCinema || movieCinemas.includes(selectedCinema)
     
     const formattedSelectedDate = formatDate(selectedDate)
@@ -138,16 +146,6 @@ function MoviesContent() {
         (showtime: Showtime) => showtime.date === formattedSelectedDate
     )
     
-    console.log('Filtering movie:', {
-      title: movie.title,
-      language: movie.language,
-      selectedLanguage,
-      matchesLanguage,
-      matchesSearch,
-      matchesCinema,
-      matchesDate,
-    })
-
     return matchesSearch && matchesLanguage && matchesCinema && matchesDate
   })
 
