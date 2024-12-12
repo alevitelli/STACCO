@@ -17,7 +17,7 @@ export default function Navigation() {
     // Check if user is logged in
     const userId = localStorage.getItem('userId')
     if (userId) {
-      fetch(`http://localhost:8000/api/users/${userId}`)
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/${userId}`)
         .then(res => res.json())
         .then(data => setUser(data))
         .catch(console.error)
